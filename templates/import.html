@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker - Import Transactions</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        (function() {
+            const saved = localStorage.getItem("expense_theme");
+            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            if (saved === "dark" || (!saved && prefersDark)) {
+                document.documentElement.classList.add("dark");
+            }
+        })();
+    </script>
+</head>
+<body>
+    {% include "navbar.html" %}
+
+    <main class="import-container">
+        <div class="import-card">
+            <div class="import-icon-box">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            </div>
+
+            <h1 style="font-size: 26px; font-weight: 800; margin-bottom: 8px;">Import Transactions</h1>
+            <p style="color: var(--text-soft); font-size: 14px; margin-bottom: 24px;">Upload your bank statement or transaction sheet in CSV or Excel (.xlsx, .xls) format.</p>
+
+            <form action="{{ url_for('import_excel') }}" method="POST" enctype="multipart/form-data" id="importForm">
+                <div class="dropzone" id="dropzone">
+                    <input type="file" name="file" id="fileInput" accept=".csv, .xlsx, .xls" required onchange="handleFileSelected(this.files)">
+                    <div style="font-size: 36px; margin-bottom: 8px;">📁</div>
+                    <strong style="display: block; font-size: 16px; margin-bottom: 4px;">Drag and drop your file here</strong>
+                    <span style="color: var(--text-muted); font-size: 13px;">or click to browse files from your computer</span>
+                </div>
+
+                <div id="filePill" class="selected-file-pill" style="display: none;">
+                    <span>📄</span>
+                    <span id="fileNameDisplay">file.csv</span>
+                    <span id="fileSizeDisplay" style="color: var(--text-muted); font-weight: normal; font-size: 11px;">(0 KB)</span>
+                </div>
+
+                <div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%; padding: 13px; font-size: 15px;">
+                        Upload & Import Transactions
+                    </button>
+                </div>
+            </form>
+
+            <div style="margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--border); text-align: left;">
+                <h3 style="font-size: 14px; font-weight: 800; margin-bottom: 8px; color: var(--text-soft);">Supported Column Headers:</h3>
+                <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">The smart importer automatically recognizes standard bank and expense column headers:</p>
+                
+                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                    <span class="category-tag">Tran Date / Date</span>
+                    <span class="category-tag">Amount / Debit</span>
+                    <span class="category-tag">Type (Expense/Income)</span>
+                    <span class="category-tag">Category</span>
+                    <span class="category-tag">Sub Category</span>
+                    <span class="category-tag">Description</span>
+                    <span class="category-tag">Place</span>
+                    <span class="category-tag">Account / Bank</span>
+                    <span class="category-tag">Remarks</span>
+                </div>
+            </div>
+
+            <div style="margin-top: 24px;">
+                <a href="{{ url_for('home') }}" class="btn btn-secondary btn-sm">← Back to Dashboard</a>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const dropzone = document.getElementById("dropzone");
+        const fileInput = document.getElementById("fileInput");
+        const filePill = document.getElementById("filePill");
+        const fileNameDisplay = document.getElementById("fileNameDisplay");
+        const fileSizeDisplay = document.getElementById("fileSizeDisplay");
+
+        ['dragenter', 'dragover'].forEach(name => {
+            dropzone.addEventListener(name, (e) => {
+                e.preventDefault();
+                dropzone.classList.add("dragover");
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(name => {
+            dropzone.addEventListener(name, (e) => {
+                e.preventDefault();
+                dropzone.classList.remove("dragover");
+            });
+        });
+
+        function handleFileSelected(files) {
+            if (files && files.length > 0) {
+                const file = files[0];
+                fileNameDisplay.textContent = file.name;
+                const sizeKb = (file.size / 1024).toFixed(1);
+                fileSizeDisplay.textContent = `(${sizeKb} KB)`;
+                filePill.style.display = "inline-flex";
+            } else {
+                filePill.style.display = "none";
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker - Visual Analytics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+        (function() {
+            const saved = localStorage.getItem("expense_theme");
+            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            if (saved === "dark" || (!saved && prefersDark)) {
+                document.documentElement.classList.add("dark");
+            }
+        })();
+    </script>
+</head>
+<body>
+    {% include "navbar.html" %}
+
+    <main class="analytics-page">
+        <!-- HEADER -->
+        <div class="dashboard-header">
+            <div>
+                <h1>Visual Analytics 📊</h1>
+                <p>Interactive portfolio and expense breakdowns. Click cards or categories to drill down into subcategories.</p>
+            </div>
+
+            <div class="header-actions">
+                <div class="timeframe-selector">
+                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, timeframe='all') }}" class="timeframe-btn {% if timeframe == 'all' %}active{% endif %}">All Time</a>
+                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, timeframe='year') }}" class="timeframe-btn {% if timeframe == 'year' %}active{% endif %}">This Year</a>
+                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, timeframe='month') }}" class="timeframe-btn {% if timeframe == 'month' %}active{% endif %}">This Month</a>
+                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, timeframe='last_month') }}" class="timeframe-btn {% if timeframe == 'last_month' %}active{% endif %}">Last Month</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5 SUMMARY CARDS: Income, Debit, Expense, Investment, Balance (Indian Value System) -->
+        <div class="summary-grid">
+            <!-- 1. INCOME -->
+            <a href="{{ url_for('analytics', type='Income', timeframe=timeframe) }}" class="summary-card income-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 7"></polyline></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Income</span>
+                    <strong>₹{{ total_income|inr }}</strong>
+                </div>
+            </a>
+
+            <!-- 2. DEBIT (Expense + Investment) -->
+            <a href="{{ url_for('analytics', type='Debit', timeframe=timeframe) }}" class="summary-card debit-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Debit</span>
+                    <strong>₹{{ total_debit|inr }}</strong>
+                </div>
+            </a>
+
+            <!-- 3. EXPENSE -->
+            <a href="{{ url_for('analytics', type='Expense', timeframe=timeframe) }}" class="summary-card expense-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="7" x2="17" y2="17"></line><polyline points="17 7 17 7 17 7"></polyline></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Expense</span>
+                    <strong>₹{{ total_expenses|inr }}</strong>
+                </div>
+            </a>
+
+            <!-- 4. INVESTMENT -->
+            <a href="{{ url_for('analytics', type='Investment', timeframe=timeframe) }}" class="summary-card investment-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Investment</span>
+                    <strong>₹{{ total_investments|inr }}</strong>
+                </div>
+            </a>
+
+            <!-- 5. BALANCE -->
+            <a href="{{ url_for('analytics', type='Debit', timeframe=timeframe) }}" class="summary-card balance-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path><line x1="12" y1="18" x2="12" y2="20"></line><line x1="12" y1="4" x2="12" y2="6"></line></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Balance</span>
+                    <strong>₹{{ balance|inr }}</strong>
+                </div>
+            </a>
+        </div>
+
+        <!-- TYPE SWITCHER TABS -->
+        <div class="timeframe-selector" style="margin-bottom: 24px;">
+            <a href="{{ url_for('analytics', type='Income', timeframe=timeframe) }}" class="timeframe-btn {% if selected_type == 'Income' %}active{% endif %}">Income</a>
+            <a href="{{ url_for('analytics', type='Debit', timeframe=timeframe) }}" class="timeframe-btn {% if selected_type == 'Debit' %}active{% endif %}">Debit</a>
+            <a href="{{ url_for('analytics', type='Expense', timeframe=timeframe) }}" class="timeframe-btn {% if selected_type == 'Expense' %}active{% endif %}">Expense</a>
+            <a href="{{ url_for('analytics', type='Investment', timeframe=timeframe) }}" class="timeframe-btn {% if selected_type == 'Investment' %}active{% endif %}">Investment</a>
+        </div>
+
+        <!-- MAIN 2-COLUMN VIEW: PIE CHART (LEFT) & CATEGORIES / SUBCATEGORIES (RIGHT) -->
+        <div class="analytics-charts-grid" style="grid-template-columns: 1.1fr 1fr; align-items: start;">
+            
+            <!-- LEFT: PIE / DONUT CHART -->
+            <div class="chart-card">
+                <div class="chart-card-header">
+                    <div>
+                        <h2>
+                            {% if selected_category %}
+                                {{ selected_category }} Breakdown
+                            {% else %}
+                                {{ selected_type }} Distribution
+                            {% endif %}
+                        </h2>
+                        <p>
+                            {% if selected_category %}
+                                Distribution across {{ selected_category }} subcategories
+                            {% else %}
+                                Proportion by category (Click segments or category cards to drill down)
+                            {% endif %}
+                        </p>
+                    </div>
+
+                    {% if selected_category %}
+                    <a href="{{ url_for('analytics', type=selected_type, timeframe=timeframe) }}" class="btn btn-secondary btn-sm">
+                        ← Back to all {{ selected_type }}
+                    </a>
+                    {% endif %}
+                </div>
+
+                <div class="chart-wrapper" style="height: 380px;">
+                    <canvas id="categoryDonutChart"></canvas>
+                </div>
+            </div>
+
+            <!-- RIGHT: CATEGORIES / SUBCATEGORIES LIST WITH DRILLDOWN -->
+            <div class="chart-card">
+                <div class="chart-card-header">
+                    <div>
+                        <h2>
+                            {% if selected_category %}
+                                Subcategories in {{ selected_category }}
+                            {% else %}
+                                {{ selected_type }} Categories
+                            {% endif %}
+                        </h2>
+                        <p>
+                            {% if selected_category %}
+                                Ranked by total amount spent / allocated
+                            {% else %}
+                                Click any category below to view its subcategory breakdown
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+
+                <div class="top-categories-list" style="max-height: 400px; overflow-y: auto;">
+                    {% if selected_category %}
+                        {% if subcategory_data %}
+                            {% for item in subcategory_data %}
+                            <div class="category-rank-item" style="background: var(--surface-soft); padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border);">
+                                <div class="rank-header">
+                                    <span style="font-weight: 700; color: var(--text);">{{ item.subcategory }}</span>
+                                    <strong style="color: var(--text);">₹{{ item.total|inr }} <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">({{ item.percentage }}%)</span></strong>
+                                </div>
+                                <div class="rank-bar-bg" style="margin-top: 6px;">
+                                    <div class="rank-bar-fill" style="width: {{ item.percentage }}%;"></div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="empty-state" style="padding: 24px;">
+                                <p>No subcategories found under {{ selected_category }}.</p>
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        {% if category_data %}
+                            {% for item in category_data %}
+                            <a href="{{ url_for('analytics', type=selected_type, category=item.category, timeframe=timeframe) }}" class="category-rank-item" style="background: var(--surface-soft); padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); text-decoration: none; transition: all 0.2s ease;" onmouseover="this.style.transform='translateX(4px)'; this.style.borderColor='var(--border-focus)';" onmouseout="this.style.transform='translateX(0)'; this.style.borderColor='var(--border)';">
+                                <div class="rank-header">
+                                    <span style="font-weight: 700; color: var(--text);">
+                                        {% if selected_type == 'Investment' %}💎{% elif selected_type == 'Income' %}↗{% elif selected_type == 'Debit' %}💳{% else %}📁{% endif %}
+                                        {{ item.category }} →
+                                    </span>
+                                    <strong style="color: var(--text);">₹{{ item.total|inr }} <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">({{ item.percentage }}%)</span></strong>
+                                </div>
+                                <div class="rank-bar-bg" style="margin-top: 6px;">
+                                    <div class="rank-bar-fill" style="width: {{ item.percentage }}%;"></div>
+                                </div>
+                            </a>
+                            {% endfor %}
+                        {% else %}
+                            <div class="empty-state" style="padding: 24px;">
+                                <p>No {{ selected_type|lower }} transactions found for this period.</p>
+                            </div>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- HIDDEN DATA FOR PIE CHART -->
+        <script id="chartDataJson" type="application/json">
+            {
+                "selected_category": {{ selected_category|tojson }},
+                "category_labels": [{% for item in (subcategory_data if selected_category else category_data) %}"{{ item.subcategory if selected_category else item.category }}"{% if not loop.last %}, {% endif %}{% endfor %}],
+                "category_values": [{% for item in (subcategory_data if selected_category else category_data) %}{{ item.total }}{% if not loop.last %}, {% endif %}{% endfor %}]
+            }
+        </script>
+    </main>
+
+    <!-- CHART.JS INITIALIZATION SCRIPT -->
+    <script>
+        let donutChartInstance = null;
+
+        function getChartColors() {
+            const isDark = document.documentElement.classList.contains("dark");
+            return {
+                text: isDark ? "#E6ECE9" : "#1C2D27",
+                muted: isDark ? "#8FA39A" : "#63756E",
+                border: isDark ? "#283933" : "#E4EAE7",
+                bg: isDark ? "#17231F" : "#FFFFFF",
+                palette: [
+                    "#2F7A6F", "#2A9D8F", "#3B82F6", "#8B5CF6", 
+                    "#EC4899", "#E76F51", "#F4A261", "#E9C46A", 
+                    "#10B981", "#6366F1", "#14B8A6", "#F59E0B"
+                ]
+            };
+        }
+
+        function initDonutChart() {
+            const raw = document.getElementById("chartDataJson").textContent;
+            const data = JSON.parse(raw);
+            const ctx = document.getElementById("categoryDonutChart");
+            if (!ctx) return;
+
+            if (donutChartInstance) {
+                donutChartInstance.destroy();
+            }
+
+            const colors = getChartColors();
+
+            if (!data.category_labels || data.category_labels.length === 0 || data.category_values.every(v => v === 0)) {
+                ctx.parentElement.innerHTML = `
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-size: 14px; text-align: center;">
+                        <div style="font-size: 32px; margin-bottom: 8px;">📊</div>
+                        <div>No transaction data available for this selection.</div>
+                    </div>
+                `;
+                return;
+            }
+
+            donutChartInstance = new Chart(ctx, {
+                type: "doughnut",
+                data: {
+                    labels: data.category_labels,
+                    datasets: [{
+                        data: data.category_values,
+                        backgroundColor: colors.palette.slice(0, data.category_labels.length),
+                        borderColor: colors.bg,
+                        borderWidth: 2.5,
+                        hoverOffset: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: "64%",
+                    plugins: {
+                        legend: {
+                            position: "bottom",
+                            labels: {
+                                color: colors.text,
+                                padding: 14,
+                                font: {
+                                    size: 12,
+                                    weight: 600,
+                                    family: "'Segoe UI', system-ui, sans-serif"
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: colors.bg,
+                            titleColor: colors.text,
+                            bodyColor: colors.text,
+                            borderColor: colors.border,
+                            borderWidth: 1,
+                            padding: 12,
+                            boxPadding: 6,
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function(context) {
+                                    const val = context.parsed;
+                                    const sum = context.dataset.data.reduce((a, b) => a + b, 0) || 1;
+                                    const pct = ((val / sum) * 100).toFixed(1);
+                                    return ` ₹${Math.round(val).toLocaleString("en-IN")} (${pct}%)`;
+                                }
+                            }
+                        }
+                    },
+                    onClick: (evt, elements) => {
+                        if (elements.length > 0 && !data.selected_category) {
+                            const index = elements[0].index;
+                            const category = data.category_labels[index];
+                            const urlParams = new URLSearchParams(window.location.search);
+                            urlParams.set("category", category);
+                            window.location.search = urlParams.toString();
+                        }
+                    }
+                }
+            });
+        }
+
+        window.updateChartsTheme = function() {
+            initDonutChart();
+        };
+
+        document.addEventListener("DOMContentLoaded", () => {
+            initDonutChart();
+        });
+    </script>
+</body>
+</html>

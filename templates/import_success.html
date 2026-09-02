@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker - Import Success</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        (function() {
+            const saved = localStorage.getItem("expense_theme");
+            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            if (saved === "dark" || (!saved && prefersDark)) {
+                document.documentElement.classList.add("dark");
+            }
+        })();
+    </script>
+</head>
+<body>
+    {% include "navbar.html" %}
+
+    <main class="import-container">
+        <div class="import-card">
+            <div class="import-icon-box" style="background: var(--success-bg); color: var(--success-text);">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+
+            <h1 style="font-size: 26px; font-weight: 800; margin-bottom: 8px;">Import Successful!</h1>
+            <p style="color: var(--text-soft); font-size: 14px; margin-bottom: 28px;">Your transactions have been processed, normalized, and saved to your account.</p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 32px; background: var(--surface-soft); padding: 20px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+                <div>
+                    <span style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">File Processed</span>
+                    <strong style="display: block; font-size: 15px; margin-top: 4px; word-break: break-all;">{{ filename }}</strong>
+                </div>
+                <div>
+                    <span style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Transactions Imported</span>
+                    <strong style="display: block; font-size: 20px; color: var(--success-text); margin-top: 4px;">{{ imported_count }}</strong>
+                </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <a href="{{ url_for('home') }}" class="btn btn-primary">Go to Dashboard</a>
+                <a href="{{ url_for('analytics') }}" class="btn btn-secondary">View Analytics Charts</a>
+                <a href="{{ url_for('import_excel') }}" style="font-size: 13px; color: var(--text-soft); font-weight: 600; margin-top: 6px;">+ Import another file</a>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

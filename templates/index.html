@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        (function() {
+            const saved = localStorage.getItem("expense_theme");
+            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            if (saved === "dark" || (!saved && prefersDark)) {
+                document.documentElement.classList.add("dark");
+            }
+        })();
+    </script>
+</head>
+<body>
+    {% include "navbar.html" %}
+
+    <main class="dashboard">
+        <!-- HEADER -->
+        <div class="dashboard-header">
+            <div>
+                <h1>Welcome, {{ session.get("name", "there") }}! 👋</h1>
+                <p>Here's your comprehensive financial overview and activity.</p>
+            </div>
+            <div class="header-actions">
+                <div class="export-dropdown-wrapper">
+                    <button class="btn btn-secondary" type="button">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Export Data ▾
+                    </button>
+                    <div class="export-menu">
+                        <a href="{{ url_for('export_csv') }}" class="export-item">
+                            <span>📄</span> Export to CSV
+                        </a>
+                        <a href="{{ url_for('export_excel') }}" class="export-item">
+                            <span>📊</span> Export to Excel
+                        </a>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="openAddModal()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    Add Transaction
+                </button>
+            </div>
+        </div>
+
+        <!-- 5 SUMMARY CARDS: Income, Debit, Expense, Investment, Balance (Indian Value System) -->
+        <div class="summary-grid">
+            <!-- 1. INCOME -->
+            <a href="{{ url_for('analytics', type='Income') }}" class="summary-card income-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 7"></polyline></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Income</span>
+                    <strong>₹{{ total_income|inr }}</strong>
+                </div>
+            </a>
+
+            <!-- 2. DEBIT (Expense + Investment) -->
+            <a href="{{ url_for('analytics', type='Debit') }}" class="summary-card debit-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Debit</span>
+                    <strong>₹{{ total_debit|inr }}</strong>
+                </div>
+            </a>
+
+            <!-- 3. EXPENSE -->
+            <a href="{{ url_for('analytics', type='Expense') }}" class="summary-card expense-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="7" x2="17" y2="17"></line><polyline points="17 7 17 17 7 17"></polyline></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Expense</span>
+                    <strong>₹{{ total_expenses|inr }}</strong>
+                </div>
+            </a>
+
+            <!-- 4. INVESTMENT -->
+            <a href="{{ url_for('analytics', type='Investment') }}" class="summary-card investment-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Investment</span>
+                    <strong>₹{{ total_investments|inr }}</strong>
+                </div>
+            </a>
+
+            <!-- 5. BALANCE -->
+            <a href="{{ url_for('analytics', type='Debit') }}" class="summary-card balance-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path><line x1="12" y1="18" x2="12" y2="20"></line><line x1="12" y1="4" x2="12" y2="6"></line></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Balance</span>
+                    <strong>₹{{ balance|inr }}</strong>
+                </div>
+            </a>
+        </div>
+
+        <!-- CONTROLS & FILTER BAR -->
+        <div class="controls-section">
+            <div class="controls-grid">
+                <!-- Search Input -->
+                <div class="search-input-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="searchInput" class="search-input" placeholder="Search description, category, place, remarks..." oninput="filterTransactions()">
+                </div>
+
+                <!-- Type Filter -->
+                <select id="typeFilter" class="filter-select" onchange="filterTransactions()">
+                    <option value="">All Types</option>
+                    <option value="Expense">Expenses</option>
+                    <option value="Income">Income</option>
+                    <option value="Investment">Investments</option>
+                </select>
+
+                <!-- Category Filter -->
+                <select id="categoryFilter" class="filter-select" onchange="filterTransactions()">
+                    <option value="">All Categories</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}">{{ cat }}</option>
+                    {% endfor %}
+                </select>
+
+                <!-- Sort Order -->
+                <select id="sortFilter" class="filter-select" onchange="sortTransactions()">
+                    <option value="date-desc">Date (Newest First)</option>
+                    <option value="date-asc">Date (Oldest First)</option>
+                    <option value="amount-desc">Amount (Highest First)</option>
+                    <option value="amount-asc">Amount (Lowest First)</option>
+                </select>
+
+                <!-- Reset Button -->
+                <button type="button" class="filter-reset-btn" onclick="resetFilters()">Reset</button>
+            </div>
+
+            <div class="active-filters-bar">
+                <span>Showing <strong id="visibleCount">{{ transactions|length }}</strong> of {{ transactions|length }} transactions</span>
+                <span id="filteredSumLabel">Filtered Total: <strong id="filteredSum" class="filter-count-badge">₹0</strong></span>
+            </div>
+        </div>
+
+        <!-- TRANSACTIONS SECTION -->
+        <div class="transactions-section">
+            <div class="section-header">
+                <div>
+                    <h2>Recent Transactions</h2>
+                    <p>All recorded income, expenses, and investment entries</p>
+                </div>
+                {% if transactions %}
+                <form action="{{ url_for('delete_all_transactions') }}" method="POST" onsubmit="return confirm('⚠️ WARNING: Are you sure you want to delete ALL your transactions? This action cannot be undone.');">
+                    <button type="submit" class="btn btn-danger btn-sm">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        Delete All
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+
+            {% if transactions %}
+            <div class="table-responsive">
+                <table class="transaction-table" id="transactionsTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Description</th>
+                            <th>Place & Account</th>
+                            <th>Amount</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionTbody">
+                        {% for tx in transactions %}
+                        <tr class="tx-row"
+                            data-id="{{ tx['id'] }}"
+                            data-date="{{ tx['date'] }}"
+                            data-type="{{ tx['type'] }}"
+                            data-category="{{ tx['category'] }}"
+                            data-subcategory="{{ tx['subcategory'] or '' }}"
+                            data-amount="{{ tx['amount'] }}"
+                            data-description="{{ tx['description'] or '' }}"
+                            data-place="{{ tx['place'] or '' }}"
+                            data-account="{{ tx['account'] or '' }}"
+                            data-remarks="{{ tx['remarks'] or '' }}">
+                            
+                            <td class="date-cell">{{ tx["date"] }}</td>
+                            
+                            <td>
+                                <span class="type-badge {% if tx['type'] == 'Income' %}type-income{% elif tx['type'] == 'Investment' %}type-investment{% else %}type-expense{% endif %}">
+                                    {% if tx['type'] == 'Income' %}↗ Income{% elif tx['type'] == 'Investment' %}◈ Invest{% else %}↘ Expense{% endif %}
+                                </span>
+                            </td>
+
+                            <td>
+                                <span class="category-tag">{{ tx["category"] }}</span>
+                                {% if tx["subcategory"] %}
+                                <span class="subcategory-hint">{{ tx["subcategory"] }}</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                <div>{{ tx["description"] or "—" }}</div>
+                                {% if tx["remarks"] %}
+                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">{{ tx["remarks"] }}</div>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                <div style="font-size: 13px;">{{ tx["account"] or "—" }}</div>
+                                {% if tx["place"] %}
+                                <div style="font-size: 11px; color: var(--text-muted);">📍 {{ tx["place"] }}</div>
+                                {% endif %}
+                            </td>
+
+                            <td class="amount-cell {% if tx['type'] == 'Income' %}amount-income{% elif tx['type'] == 'Investment' %}amount-investment{% else %}amount-expense{% endif %}">
+                                {% if tx['type'] == 'Income' %}+{% elif tx['type'] == 'Investment' %}◈ {% else %}-{% endif %}₹{{ tx["amount"]|inr }}
+                            </td>
+
+                            <td>
+                                <div class="actions-cell">
+                                    <!-- EDIT BUTTON -->
+                                    <button class="action-btn edit-btn" title="Edit Transaction" type="button" onclick="openEditModal(this.closest('.tx-row'))">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                    </button>
+
+                                    <!-- DELETE BUTTON -->
+                                    <form action="{{ url_for('delete_transaction', transaction_id=tx['id']) }}" method="POST" onsubmit="return confirm('Delete this transaction (₹{{ tx['amount']|round|int }} - {{ tx['category'] }})?');">
+                                        <button type="submit" class="action-btn delete-btn" title="Delete Transaction">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- PAGINATION -->
+            <div class="pagination-bar" id="paginationBar">
+                <span id="paginationInfo">Showing 1 to 15 entries</span>
+                <div class="pagination-controls" id="paginationControls"></div>
+            </div>
+
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">₹</div>
+                <h3>No transactions yet</h3>
+                <p>Start recording your daily expenses, incomes, or investments.</p>
+                <button class="btn btn-primary" onclick="openAddModal()">+ Add Your First Transaction</button>
+            </div>
+            {% endif %}
+        </div>
+    </main>
+
+    <!-- =====================================================
+         ADD TRANSACTION MODAL
+    ====================================================== -->
+    <div id="addModal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Add Transaction</h2>
+                <button class="modal-close-btn" onclick="closeModal('addModal')">✕</button>
+            </div>
+
+            <form action="{{ url_for('add_transaction') }}" method="POST">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" name="date" value="{{ today }}" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select name="type" id="add_type_select" required onchange="handleTypeChange(this, 'add_category_input', 'add_subcat_input')">
+                            <option value="Expense" selected>Expense</option>
+                            <option value="Income">Income</option>
+                            <option value="Investment">Investment</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Category</label>
+                        <input type="text" id="add_category_input" name="category" list="categorySuggestions" placeholder="Food, Rent, Investment, Salary..." required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Subcategory</label>
+                        <input type="text" id="add_subcat_input" name="subcategory" list="subcategorySuggestions" placeholder="Mutual Funds, Insurance, SIP, Groceries...">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Amount (₹)</label>
+                        <input type="number" name="amount" step="1" min="1" placeholder="0" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Account / Payment Mode</label>
+                        <input type="text" name="account" list="accountSuggestions" placeholder="Bank, UPI, Cash, Credit Card">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Place / Location</label>
+                        <input type="text" name="place" placeholder="Optional (e.g. Panvel, Amazon)">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Description</label>
+                        <input type="text" name="description" placeholder="Brief note / transaction details">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Remarks</label>
+                    <textarea name="remarks" placeholder="Optional extra remarks or tags..."></textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Transaction</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- =====================================================
+         EDIT TRANSACTION MODAL
+    ====================================================== -->
+    <div id="editModal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Edit Transaction</h2>
+                <button class="modal-close-btn" onclick="closeModal('editModal')">✕</button>
+            </div>
+
+            <form id="editForm" method="POST">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="edit_date" name="date" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="edit_type" name="type" required onchange="handleTypeChange(this, 'edit_category', 'edit_subcategory')">
+                            <option value="Expense">Expense</option>
+                            <option value="Income">Income</option>
+                            <option value="Investment">Investment</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Category</label>
+                        <input type="text" id="edit_category" name="category" list="categorySuggestions" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Subcategory</label>
+                        <input type="text" id="edit_subcategory" name="subcategory" list="subcategorySuggestions">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Amount (₹)</label>
+                        <input type="number" id="edit_amount" name="amount" step="1" min="1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Account / Payment Mode</label>
+                        <input type="text" id="edit_account" name="account" list="accountSuggestions">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Place / Location</label>
+                        <input type="text" id="edit_place" name="place">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Description</label>
+                        <input type="text" id="edit_description" name="description">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Remarks</label>
+                    <textarea id="edit_remarks" name="remarks"></textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('editModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Transaction</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- DATALISTS FOR AUTOCOMPLETE -->
+    <datalist id="categorySuggestions">
+        <option value="Investment"></option>
+        <option value="Food & Dining"></option>
+        <option value="Groceries"></option>
+        <option value="Rent"></option>
+        <option value="Bills & Utilities"></option>
+        <option value="Salary"></option>
+        <option value="Shopping"></option>
+        <option value="Healthcare"></option>
+        <option value="Travel & Commute"></option>
+        <option value="Entertainment"></option>
+        <option value="Subscriptions"></option>
+        <option value="Insurance"></option>
+        <option value="Education"></option>
+        {% for cat in categories %}
+        <option value="{{ cat }}"></option>
+        {% endfor %}
+    </datalist>
+
+    <datalist id="subcategorySuggestions">
+        <option value="Mutual Funds"></option>
+        <option value="Insurance"></option>
+        <option value="SIP"></option>
+        <option value="Stocks / Equity"></option>
+        <option value="Fixed Deposit"></option>
+        <option value="Bonds"></option>
+        <option value="PPF"></option>
+        <option value="Gold"></option>
+        <option value="Crypto"></option>
+        <option value="NPS"></option>
+        <option value="Groceries"></option>
+        <option value="Electricity"></option>
+        <option value="Dining Out"></option>
+        <option value="Medicine"></option>
+    </datalist>
+
+    <datalist id="accountSuggestions">
+        <option value="Bank Account"></option>
+        <option value="UPI"></option>
+        <option value="Cash"></option>
+        <option value="Credit Card"></option>
+        <option value="Debit Card"></option>
+        <option value="Axis Bank"></option>
+        <option value="HDFC Bank"></option>
+        <option value="ICICI Bank"></option>
+        <option value="SBI"></option>
+        {% for acc in accounts %}
+        <option value="{{ acc }}"></option>
+        {% endfor %}
+    </datalist>
+
+    <!-- JAVASCRIPT FOR MODALS, SEARCH, FILTER, PAGINATION -->
+    <script>
+        function handleTypeChange(selectElem, catInputId, subcatInputId) {
+            const catInput = document.getElementById(catInputId);
+            if (selectElem.value === "Investment") {
+                if (!catInput.value || catInput.value === "Food" || catInput.value === "Other") {
+                    catInput.value = "Investment";
+                }
+            }
+        }
+
+        function openAddModal() {
+            document.getElementById("addModal").classList.add("open");
+        }
+
+        function openEditModal(row) {
+            const id = row.dataset.id;
+            const form = document.getElementById("editForm");
+            form.action = "/edit/" + id;
+
+            document.getElementById("edit_date").value = row.dataset.date || "";
+            document.getElementById("edit_type").value = row.dataset.type || "Expense";
+            document.getElementById("edit_category").value = row.dataset.category || "";
+            document.getElementById("edit_subcategory").value = row.dataset.subcategory || "";
+            document.getElementById("edit_amount").value = Math.round(parseFloat(row.dataset.amount || 0));
+            document.getElementById("edit_account").value = row.dataset.account || "";
+            document.getElementById("edit_place").value = row.dataset.place || "";
+            document.getElementById("edit_description").value = row.dataset.description || "";
+            document.getElementById("edit_remarks").value = row.dataset.remarks || "";
+
+            document.getElementById("editModal").classList.add("open");
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove("open");
+        }
+
+        window.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+                document.querySelectorAll(".modal-overlay.open").forEach(m => m.classList.remove("open"));
+            }
+        });
+
+        document.querySelectorAll(".modal-overlay").forEach(overlay => {
+            overlay.addEventListener("click", (e) => {
+                if (e.target === overlay) {
+                    overlay.classList.remove("open");
+                }
+            });
+        });
+
+        let currentPage = 1;
+        const pageSize = 15;
+        let visibleRows = [];
+
+        function getAllRows() {
+            return Array.from(document.querySelectorAll(".tx-row"));
+        }
+
+        function filterTransactions() {
+            const query = (document.getElementById("searchInput").value || "").toLowerCase().trim();
+            const typeVal = document.getElementById("typeFilter").value;
+            const catVal = document.getElementById("categoryFilter").value;
+
+            const allRows = getAllRows();
+            let totalAmount = 0;
+
+            visibleRows = allRows.filter(row => {
+                const type = row.dataset.type || "";
+                const cat = row.dataset.category || "";
+                const desc = (row.dataset.description || "").toLowerCase();
+                const place = (row.dataset.place || "").toLowerCase();
+                const acc = (row.dataset.account || "").toLowerCase();
+                const remarks = (row.dataset.remarks || "").toLowerCase();
+                const subcat = (row.dataset.subcategory || "").toLowerCase();
+                const amount = parseFloat(row.dataset.amount || 0);
+
+                const matchesQuery = !query ||
+                    desc.includes(query) ||
+                    cat.toLowerCase().includes(query) ||
+                    place.includes(query) ||
+                    acc.includes(query) ||
+                    remarks.includes(query) ||
+                    subcat.includes(query);
+
+                const matchesType = !typeVal || type === typeVal;
+                const matchesCat = !catVal || cat === catVal;
+
+                const isMatch = matchesQuery && matchesType && matchesCat;
+                if (isMatch) {
+                    totalAmount += amount;
+                }
+                return isMatch;
+            });
+
+            document.getElementById("visibleCount").textContent = visibleRows.length;
+            document.getElementById("filteredSum").textContent = "₹" + Math.round(totalAmount).toLocaleString("en-IN");
+
+            currentPage = 1;
+            renderPagination();
+        }
+
+        function sortTransactions() {
+            const sortVal = document.getElementById("sortFilter").value;
+            const tbody = document.getElementById("transactionTbody");
+            const allRows = getAllRows();
+
+            allRows.sort((a, b) => {
+                if (sortVal === "date-desc") {
+                    return (b.dataset.date || "").localeCompare(a.dataset.date || "") || (b.dataset.id - a.dataset.id);
+                } else if (sortVal === "date-asc") {
+                    return (a.dataset.date || "").localeCompare(b.dataset.date || "") || (a.dataset.id - b.dataset.id);
+                } else if (sortVal === "amount-desc") {
+                    return parseFloat(b.dataset.amount || 0) - parseFloat(a.dataset.amount || 0);
+                } else if (sortVal === "amount-asc") {
+                    return parseFloat(a.dataset.amount || 0) - parseFloat(b.dataset.amount || 0);
+                }
+                return 0;
+            });
+
+            allRows.forEach(row => tbody.appendChild(row));
+            filterTransactions();
+        }
+
+        function renderPagination() {
+            const allRows = getAllRows();
+            allRows.forEach(r => r.style.display = "none");
+
+            const totalPages = Math.ceil(visibleRows.length / pageSize) || 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+
+            const startIdx = (currentPage - 1) * pageSize;
+            const endIdx = startIdx + pageSize;
+            const pageRows = visibleRows.slice(startIdx, endIdx);
+
+            pageRows.forEach(r => r.style.display = "");
+
+            const info = document.getElementById("paginationInfo");
+            if (info) {
+                if (visibleRows.length === 0) {
+                    info.textContent = "No matching transactions found";
+                } else {
+                    info.textContent = `Showing ${startIdx + 1} to ${Math.min(endIdx, visibleRows.length)} of ${visibleRows.length} entries`;
+                }
+            }
+
+            const controls = document.getElementById("paginationControls");
+            if (!controls) return;
+            controls.innerHTML = "";
+
+            if (totalPages <= 1) return;
+
+            const prevBtn = document.createElement("button");
+            prevBtn.className = "page-btn";
+            prevBtn.textContent = "« Prev";
+            prevBtn.disabled = currentPage === 1;
+            prevBtn.onclick = () => { currentPage--; renderPagination(); };
+            controls.appendChild(prevBtn);
+
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                    const btn = document.createElement("button");
+                    btn.className = `page-btn ${i === currentPage ? 'active' : ''}`;
+                    btn.textContent = i;
+                    btn.onclick = () => { currentPage = i; renderPagination(); };
+                    controls.appendChild(btn);
+                } else if (i === currentPage - 3 || i === currentPage + 3) {
+                    const dots = document.createElement("span");
+                    dots.textContent = "...";
+                    dots.style.padding = "0 4px";
+                    controls.appendChild(dots);
+                }
+            }
+
+            const nextBtn = document.createElement("button");
+            nextBtn.className = "page-btn";
+            nextBtn.textContent = "Next »";
+            nextBtn.disabled = currentPage === totalPages;
+            nextBtn.onclick = () => { currentPage++; renderPagination(); };
+            controls.appendChild(nextBtn);
+        }
+
+        function resetFilters() {
+            document.getElementById("searchInput").value = "";
+            document.getElementById("typeFilter").value = "";
+            document.getElementById("categoryFilter").value = "";
+            document.getElementById("sortFilter").value = "date-desc";
+            sortTransactions();
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            filterTransactions();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker - Holdings & Portfolios</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        (function() {
+            const saved = localStorage.getItem("expense_theme");
+            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            if (saved === "dark" || (!saved && prefersDark)) {
+                document.documentElement.classList.add("dark");
+            }
+        })();
+    </script>
+</head>
+<body>
+    {% include "navbar.html" %}
+
+    <main class="dashboard">
+        <!-- HEADER -->
+        <div class="dashboard-header">
+            <div>
+                <h1>Holdings & Portfolios 📈</h1>
+                <p>Track separate totals for each statement file and your combined portfolio performance.</p>
+            </div>
+
+            <div class="header-actions">
+                <button class="btn btn-primary" onclick="openUploadModal()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    Import Statements
+                </button>
+            </div>
+        </div>
+
+        <!-- 1. OVERALL PORTFOLIO SUMMARY CARDS -->
+        <div class="summary-grid">
+            <!-- 1. TOTAL MARKET VALUE / PRESENT VALUE -->
+            <div class="summary-card income-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path><line x1="12" y1="18" x2="12" y2="20"></line><line x1="12" y1="4" x2="12" y2="6"></line></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Total Portfolio Value</span>
+                    <strong>₹{{ total_present_value|inr }}</strong>
+                </div>
+            </div>
+
+            <!-- 2. TOTAL COST VALUE / INVESTED -->
+            <div class="summary-card investment-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Total Cost / Invested</span>
+                    <strong>₹{{ total_invested_value|inr }}</strong>
+                </div>
+            </div>
+
+            <!-- 3. TOTAL UNREALIZED P&L -->
+            <div class="summary-card {% if total_unrealized_pnl >= 0 %}income-card{% else %}expense-card{% endif %}">
+                <div class="summary-icon-box">
+                    {% if total_unrealized_pnl >= 0 %}
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 7"></polyline></svg>
+                    {% else %}
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="7" x2="17" y2="17"></line><polyline points="17 7 17 7 17 7"></polyline></svg>
+                    {% endif %}
+                </div>
+                <div class="summary-info">
+                    <span>Unrealized P&L</span>
+                    <strong style="color: {% if total_unrealized_pnl >= 0 %}var(--success-text){% else %}var(--danger-text){% endif %};">
+                        {% if total_unrealized_pnl >= 0 %}+{% endif %}₹{{ total_unrealized_pnl|inr }}
+                    </strong>
+                </div>
+            </div>
+
+            <!-- 4. OVERALL RETURNS -->
+            <div class="summary-card debit-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"></path><path d="M12 20V4"></path><path d="M6 20v-6"></path></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Market Returns</span>
+                    <strong>{% if overall_pnl_percentage >= 0 %}+{% endif %}{{ overall_pnl_percentage }}%</strong>
+                </div>
+            </div>
+
+            <!-- 5. ACTIVE STATEMENTS -->
+            <div class="summary-card balance-card">
+                <div class="summary-icon-box">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                </div>
+                <div class="summary-info">
+                    <span>Imported Files</span>
+                    <strong>{{ statements|length }} files</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. SEPARATE STATEMENTS SECTION (PRIMARY FOCUS) -->
+        <div class="transactions-section" style="margin-bottom: 28px;">
+            <div class="section-header">
+                <div>
+                    <h2>Imported Statements Breakdown</h2>
+                    <p>Click on any statement to view its full original table</p>
+                </div>
+
+                {% if statements %}
+                <form action="{{ url_for('delete_all_holdings') }}" method="POST" onsubmit="return confirm('Delete all imported holdings statements?');">
+                    <button type="submit" class="btn btn-danger btn-sm">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        Clear All Statements
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+
+            {% if statements %}
+            <div class="holdings-grid">
+                {% for stmt in statements %}
+                <div class="holdings-card">
+                    <div class="holdings-card-header">
+                        <div>
+                            <h3 class="holdings-card-title">{{ stmt["title"] }}</h3>
+                            <div class="holdings-card-sub">
+                                <span>📄 {{ stmt["filename"] }}</span>
+                                <span>•</span>
+                                <span>{{ stmt["row_count"] }} entries</span>
+                                {% if stmt["statement_date"] %}
+                                <span>•</span>
+                                <span>As on {{ stmt["statement_date"] }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <form action="{{ url_for('delete_holdings_statement', statement_id=stmt['id']) }}" method="POST" onsubmit="return confirm('Delete statement: {{ stmt['title'] }}?');">
+                            <button type="submit" class="action-btn delete-btn" title="Delete statement">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- HOLDINGS CARD METRICS -->
+                    {% if stmt["has_pnl"] %}
+                    <div class="holdings-metrics-grid">
+                        <div class="holdings-metric-item">
+                            <span class="holdings-metric-label">Market Value</span>
+                            <strong class="holdings-metric-val" style="color: var(--primary);">₹{{ stmt["present_value"]|inr }}</strong>
+                        </div>
+
+                        <div class="holdings-metric-item">
+                            <span class="holdings-metric-label">Cost Value</span>
+                            <strong class="holdings-metric-val">₹{{ stmt["invested_value"]|inr }}</strong>
+                        </div>
+
+                        <div class="holdings-metric-item">
+                            <span class="holdings-metric-label">Unrealized P&L</span>
+                            <strong class="holdings-metric-val" style="color: {% if stmt['unrealized_pnl'] >= 0 %}var(--success-text){% else %}var(--danger-text){% endif %};">
+                                {% if stmt["unrealized_pnl"] >= 0 %}+{% endif %}₹{{ stmt["unrealized_pnl"]|inr }}
+                                <span class="pnl-pill {% if stmt['unrealized_pnl'] >= 0 %}pnl-pill-pos{% else %}pnl-pill-neg{% endif %}">
+                                    {% if stmt["pnl_percentage"] >= 0 %}+{% endif %}{{ stmt["pnl_percentage"] }}%
+                                </span>
+                            </strong>
+                        </div>
+                    </div>
+                    {% else %}
+                    <!-- SIMPLE AMOUNT / FIXED VALUE STATEMENT (EPF, NPS, PPF, ETC.) -->
+                    <div class="holdings-metrics-grid" style="grid-template-columns: 1fr;">
+                        <div class="holdings-metric-item">
+                            <span class="holdings-metric-label">Total Amount / Value</span>
+                            <strong class="holdings-metric-val" style="color: var(--primary); font-size: 20px;">₹{{ stmt["present_value"]|inr }}</strong>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="holdings-card-footer">
+                        <span style="font-size: 11px; color: var(--text-muted);">Uploaded: {{ stmt["upload_date"] }}</span>
+                        <a href="{{ url_for('holdings_detail', statement_id=stmt['id']) }}" class="btn btn-primary btn-sm">
+                            View Original Breakdown →
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">📊</div>
+                <h3>No Holdings Statements Imported Yet</h3>
+                <p>Upload your statement files (Excel or CSV) using the drop zone below to view separate totals and original tables.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 3. UPLOAD SECTION (AT THE BOTTOM OF THE PAGE) -->
+        <div class="chart-card">
+            <div class="chart-card-header">
+                <div>
+                    <h2>Import Holdings & Asset Statements</h2>
+                    <p>Select or drop 3-4 Excel (.xlsx, .xls) or CSV files at once (Equity, Mutual Funds, EPF, NPS, Demat, PPF, etc.)</p>
+                </div>
+            </div>
+
+            <form action="{{ url_for('upload_holdings') }}" method="POST" enctype="multipart/form-data" class="holdings-upload-form">
+                <div class="drop-zone" id="dropZone" onclick="document.getElementById('holdingsFiles').click()">
+                    <div class="drop-zone-icon">📁</div>
+                    <div class="drop-zone-title">Click to browse or drag & drop files here</div>
+                    <div class="drop-zone-sub">Supports multiple .xlsx, .xls, or .csv statement files simultaneously</div>
+                    <input type="file" id="holdingsFiles" name="files" multiple accept=".xlsx,.xls,.csv" style="display: none;" onchange="updateSelectedFileList(this)">
+                </div>
+
+                <div id="fileListPreview" style="margin-top: 12px; display: none;"></div>
+
+                <div style="margin-top: 16px; display: flex; justify-content: flex-end;">
+                    <button type="submit" class="btn btn-primary" id="uploadBtn" style="display: none;">
+                        Upload & Parse Statements
+                    </button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <!-- UPLOAD MODAL -->
+    <div id="uploadModal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Import Holdings & Asset Files</h2>
+                <button class="modal-close-btn" onclick="closeUploadModal()">✕</button>
+            </div>
+
+            <form action="{{ url_for('upload_holdings') }}" method="POST" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label>Select Excel (.xlsx, .xls) or CSV statement files</label>
+                    <input type="file" name="files" multiple accept=".xlsx,.xls,.csv" required style="padding: 10px; background: var(--surface-soft); border-radius: 8px; width: 100%;">
+                    <small style="color: var(--text-muted); display: block; margin-top: 4px;">You can select multiple files at once.</small>
+                </div>
+
+                <div class="modal-actions" style="margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Import Files</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openUploadModal() {
+            document.getElementById("uploadModal").classList.add("open");
+        }
+        function closeUploadModal() {
+            document.getElementById("uploadModal").classList.remove("open");
+        }
+
+        function updateSelectedFileList(input) {
+            const preview = document.getElementById("fileListPreview");
+            const btn = document.getElementById("uploadBtn");
+            if (!input.files || input.files.length === 0) {
+                preview.style.display = "none";
+                btn.style.display = "none";
+                return;
+            }
+
+            preview.style.display = "block";
+            btn.style.display = "inline-flex";
+
+            let html = '<div style="font-weight: 700; margin-bottom: 6px; font-size: 13px;">Selected Files (' + input.files.length + '):</div><div style="display: flex; flex-direction: column; gap: 4px;">';
+            for (let i = 0; i < input.files.length; i++) {
+                const f = input.files[i];
+                html += '<div style="background: var(--surface-soft); padding: 8px 12px; border-radius: 6px; font-size: 12px; display: flex; justify-content: space-between;"><span>📄 ' + f.name + '</span><span style="color: var(--text-muted);">' + (f.size / 1024).toFixed(1) + ' KB</span></div>';
+            }
+            html += '</div>';
+            preview.innerHTML = html;
+        }
+
+        const dropZone = document.getElementById("dropZone");
+        if (dropZone) {
+            ["dragenter", "dragover"].forEach(event => {
+                dropZone.addEventListener(event, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.style.borderColor = "var(--primary)";
+                    dropZone.style.background = "var(--primary-light)";
+                });
+            });
+
+            ["dragleave", "drop"].forEach(event => {
+                dropZone.addEventListener(event, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.style.borderColor = "";
+                    dropZone.style.background = "";
+                });
+            });
+
+            dropZone.addEventListener("drop", (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                document.getElementById("holdingsFiles").files = files;
+                updateSelectedFileList(document.getElementById("holdingsFiles"));
+            });
+        }
+    </script>
+</body>
+</html>
