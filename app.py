@@ -166,7 +166,6 @@ def init_db():
     conn.close()
 
 
-# Ensure database and tables are created upon loading (vital for WSGI/Production servers)
 try:
     init_db()
 except Exception as e:
@@ -350,7 +349,15 @@ def parse_holdings_data(raw_rows, filename):
     unrealized_pnl = None
     has_pnl = False
     
-    table_start_idx = -1
+    header_keywords = [
+        "sn", "sr no", "s.no", "s.n", "no", "description", "particulars", "item", "name", 
+        "amount", "balance", "value", "total", "folio", "folio no", "isin", "scheme", 
+        "scheme name", "cost value", "cost", "unit balance", "units", "nav date", "nav", 
+        "nav (inr)", "market value", "market value (inr)", "registrar", "stock", "symbol", 
+        "instrument", "company", "scrip", "qty", "quantity", "shares", "buy price", "avg price", 
+        "ltp", "current price", "cur price", "market price", "invested", "current val", "market val", 
+        "p&l", "profit"
+    ]
     
     # 1. Search for title & top summary block in the first 25 rows
     for i, row in enumerate(raw_rows[:25]):
@@ -368,57 +375,51 @@ def parse_holdings_data(raw_rows, filename):
             if date_match:
                 statement_date = date_match.group(1)
                 
-        # Check for top summary key-values
-        for j, cell in enumerate(row):
-            if cell is None:
-                continue
-            cell_str = str(cell).strip().lower()
-            
-            if any(k in cell_str for k in ["invested value", "total cost", "total cost value", "total investment", "cost value", "invested amount"]):
-                for next_cell in row[j+1:]:
-                    num = clean_num(next_cell)
-                    if num is not None and num > 0 and invested_value is None:
-                        invested_value = num
-                        has_pnl = True
-                        break
-            elif cell_str in ["invested", "investment"]:
-                for next_cell in row[j+1:]:
-                    num = clean_num(next_cell)
-                    if num is not None and num > 0 and invested_value is None:
-                        invested_value = num
-                        has_pnl = True
-                        break
-                        
-            if any(k in cell_str for k in ["present value", "current value", "market value", "total value", "portfolio value", "current market value", "total market value"]):
-                for next_cell in row[j+1:]:
-                    num = clean_num(next_cell)
-                    if num is not None and num > 0 and present_value is None:
-                        present_value = num
-                        break
-                        
-            if any(k in cell_str for k in ["unrealized p&l", "unrealized pnl", "unrealised p&l", "unrealised pnl", "unrealized gain", "p&l", "pnl", "gain/loss", "total profit", "total returns"]):
-                for next_cell in row[j+1:]:
-                    num = clean_num(next_cell)
-                    if num is not None and unrealized_pnl is None:
-                        unrealized_pnl = num
-                        has_pnl = True
-                        break
+        # Check for top summary key-values (only if row has 2 or 3 items, not a full table row)
+        if len(non_empty) <= 3:
+            for j, cell in enumerate(row):
+                if cell is None:
+                    continue
+                cell_str = str(cell).strip().lower()
+                
+                if any(k in cell_str for k in ["invested value", "total cost", "total cost value", "total investment", "cost value", "invested amount", "invested"]):
+                    for next_cell in row[j+1:]:
+                        num = clean_num(next_cell)
+                        if num is not None and num > 0 and invested_value is None:
+                            invested_value = num
+                            has_pnl = True
+                            break
+                            
+                if any(k in cell_str for k in ["present value", "current value", "market value", "total value", "portfolio value", "current market value", "total market value", "total amount", "total val"]):
+                    for next_cell in row[j+1:]:
+                        num = clean_num(next_cell)
+                        if num is not None and num > 0 and present_value is None:
+                            present_value = num
+                            break
+                            
+                if any(k in cell_str for k in ["unrealized p&l", "unrealized pnl", "unrealised p&l", "unrealised pnl", "unrealized gain", "p&l", "pnl", "gain/loss", "total profit", "total returns"]):
+                    for next_cell in row[j+1:]:
+                        num = clean_num(next_cell)
+                        if num is not None and unrealized_pnl is None:
+                            unrealized_pnl = num
+                            has_pnl = True
+                            break
         
-        # Check if this row is the table header row
-        header_keywords = [
-            "sn", "sr no", "s.no", "s.n", "no", "description", "particulars", "item", "name", 
-            "amount", "balance", "value", "total", "folio", "folio no", "isin", "scheme", 
-            "scheme name", "cost value", "cost", "unit balance", "units", "nav date", "nav", 
-            "nav (inr)", "market value", "market value (inr)", "registrar", "stock", "symbol", 
-            "instrument", "company", "scrip", "qty", "quantity", "shares", "buy price", "avg price", 
-            "ltp", "current price", "cur price", "market price", "invested", "current val", "market val", 
-            "p&l", "profit"
-        ]
-        matches = sum(1 for kw in header_keywords if any(kw == str(c).strip().lower() or kw in str(c).strip().lower() for c in row if c is not None))
-        
-        if matches >= 2:
+    # 2. Find the best table header row (row with most matching keyword cells)
+    table_start_idx = -1
+    max_matches = 0
+    for i, row in enumerate(raw_rows[:25]):
+        non_empty = [c for c in row if c is not None and str(c).strip() != ""]
+        if len(non_empty) < 2:
+            continue
+        matching_cells = 0
+        for c in non_empty:
+            c_str = str(c).strip().lower()
+            if any(kw == c_str or kw in c_str for kw in header_keywords) and clean_num(c) is None:
+                matching_cells += 1
+        if matching_cells >= 2 and matching_cells > max_matches:
+            max_matches = matching_cells
             table_start_idx = i
-            break
             
     if not title:
         clean_name = filename.rsplit(".", 1)[0].replace("_", " ").replace("-", " ").title()
@@ -431,6 +432,14 @@ def parse_holdings_data(raw_rows, filename):
     total_row_market = None
     total_row_pnl = None
     
+    cost_col = -1
+    mkt_col = -1
+    amt_col = -1
+    pnl_col = -1
+    qty_col = -1
+    buy_price_col = -1
+    cur_price_col = -1
+    
     if table_start_idx != -1:
         raw_headers = raw_rows[table_start_idx]
         last_col = 0
@@ -440,24 +449,24 @@ def parse_holdings_data(raw_rows, filename):
                 
         headers = [str(raw_headers[c]).strip() if c < len(raw_headers) and raw_headers[c] is not None and str(raw_headers[c]).strip() != "" else f"Column {c+1}" for c in range(last_col + 1)]
         
-        # Identify Cost Value, Market Value, and General Amount columns
-        cost_col = -1
-        mkt_col = -1
-        amt_col = -1
-        pnl_col = -1
-        
         for idx, h in enumerate(headers):
             h_lower = h.lower()
-            if any(k in h_lower for k in ["cost value", "total cost", "buy value", "cost", "invested value", "invest amount", "invested"]) and cost_col == -1:
+            if any(k in h_lower for k in ["cost value", "total cost", "buy value", "invested value", "invest amount", "invested", "cost"]) and cost_col == -1:
                 cost_col = idx
                 has_pnl = True
-            elif any(k in h_lower for k in ["market value", "present value", "current value", "market val", "total val"]) and mkt_col == -1:
+            elif any(k in h_lower for k in ["market value", "present value", "current value", "market val", "present val", "total val", "cur val"]) and mkt_col == -1:
                 mkt_col = idx
             elif any(k in h_lower for k in ["amount", "balance", "value"]) and amt_col == -1 and mkt_col == -1 and cost_col == -1:
                 amt_col = idx
             elif any(k in h_lower for k in ["unrealized", "p&l", "pnl", "gain", "profit"]) and "%" not in h_lower and pnl_col == -1:
                 pnl_col = idx
                 has_pnl = True
+            elif any(k in h_lower for k in ["qty", "quantity", "shares"]) and qty_col == -1:
+                qty_col = idx
+            elif any(k in h_lower for k in ["avg. buy price", "buy price", "avg price"]) and buy_price_col == -1:
+                buy_price_col = idx
+            elif any(k in h_lower for k in ["present price", "market price", "current price", "ltp"]) and cur_price_col == -1:
+                cur_price_col = idx
 
         for row in raw_rows[table_start_idx + 1:]:
             if not any(row):
@@ -523,43 +532,35 @@ def parse_holdings_data(raw_rows, filename):
         calc_amt = 0.0
         calc_pnl = 0.0
         
-        inv_col = -1
-        cur_col = -1
-        gen_col = -1
-        pnl_col = -1
-        
-        for idx, h in enumerate(headers):
-            h_lower = h.lower()
-            if any(k in h_lower for k in ["cost value", "total cost", "buy value", "cost", "invested value", "invest amount", "invested"]) and inv_col == -1:
-                inv_col = idx
-                has_pnl = True
-            elif any(k in h_lower for k in ["market value", "present value", "current value", "market val", "cur val", "total val"]) and cur_col == -1:
-                cur_col = idx
-            elif any(k in h_lower for k in ["amount", "balance", "value"]) and gen_col == -1 and cur_col == -1:
-                gen_col = idx
-            elif any(k in h_lower for k in ["unrealized", "p&l", "pnl", "gain", "profit"]) and "%" not in h_lower and pnl_col == -1:
-                pnl_col = idx
-                has_pnl = True
-                
         for row in data_rows:
-            if inv_col != -1 and inv_col < len(row):
-                v = clean_num(row[inv_col])
+            if cost_col != -1 and cost_col < len(row):
+                v = clean_num(row[cost_col])
                 if v: calc_invested += v
-            if cur_col != -1 and cur_col < len(row):
-                v = clean_num(row[cur_col])
+            elif qty_col != -1 and buy_price_col != -1 and qty_col < len(row) and buy_price_col < len(row):
+                q = clean_num(row[qty_col])
+                p = clean_num(row[buy_price_col])
+                if q and p: calc_invested += (q * p)
+                
+            if mkt_col != -1 and mkt_col < len(row):
+                v = clean_num(row[mkt_col])
                 if v: calc_present += v
-            elif gen_col != -1 and gen_col < len(row):
-                v = clean_num(row[gen_col])
+            elif qty_col != -1 and cur_price_col != -1 and qty_col < len(row) and cur_price_col < len(row):
+                q = clean_num(row[qty_col])
+                p = clean_num(row[cur_price_col])
+                if q and p: calc_present += (q * p)
+            elif amt_col != -1 and amt_col < len(row):
+                v = clean_num(row[amt_col])
                 if v: calc_amt += v
+                
             if pnl_col != -1 and pnl_col < len(row):
                 v = clean_num(row[pnl_col])
                 if v: calc_pnl += v
                 
-        if inv_col != -1 and invested_value is None and calc_invested > 0:
+        if (cost_col != -1 or (qty_col != -1 and buy_price_col != -1)) and invested_value is None and calc_invested > 0:
             invested_value = calc_invested
-        if cur_col != -1 and present_value is None and calc_present > 0:
+        if (mkt_col != -1 or (qty_col != -1 and cur_price_col != -1)) and present_value is None and calc_present > 0:
             present_value = calc_present
-        elif gen_col != -1 and present_value is None and calc_amt > 0:
+        elif amt_col != -1 and present_value is None and calc_amt > 0:
             present_value = calc_amt
             if invested_value is None:
                 invested_value = calc_amt
