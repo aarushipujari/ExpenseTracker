@@ -19,7 +19,8 @@ app.secret_key = os.environ.get(
     "expense_tracker_secret_key_2026"
 )
 
-DATABASE = "expenses.db"
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DATABASE = os.path.join(BASE_DIR, "expenses.db")
 
 
 # ============================================================
@@ -163,6 +164,13 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+
+# Ensure database and tables are created upon loading (vital for WSGI/Production servers)
+try:
+    init_db()
+except Exception as e:
+    pass
 
 
 # ============================================================
