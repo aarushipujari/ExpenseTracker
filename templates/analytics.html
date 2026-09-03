@@ -24,15 +24,15 @@
         <div class="dashboard-header">
             <div>
                 <h1>Visual Analytics 📊</h1>
-                <p>Interactive portfolio and expense breakdowns. Click cards or categories to drill down into subcategories.</p>
+                <p>Interactive portfolio and expense breakdowns. Click categories to view sub-expenses, and click sub-expenses to view individual remarks.</p>
             </div>
 
             <div class="header-actions">
                 <div class="timeframe-selector">
-                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, timeframe='all') }}" class="timeframe-btn {% if timeframe == 'all' %}active{% endif %}">All Time</a>
-                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, timeframe='year') }}" class="timeframe-btn {% if timeframe == 'year' %}active{% endif %}">This Year</a>
-                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, timeframe='month') }}" class="timeframe-btn {% if timeframe == 'month' %}active{% endif %}">This Month</a>
-                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, timeframe='last_month') }}" class="timeframe-btn {% if timeframe == 'last_month' %}active{% endif %}">Last Month</a>
+                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, subcategory=selected_subcategory, timeframe='all') }}" class="timeframe-btn {% if timeframe == 'all' %}active{% endif %}">All Time</a>
+                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, subcategory=selected_subcategory, timeframe='year') }}" class="timeframe-btn {% if timeframe == 'year' %}active{% endif %}">This Year</a>
+                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, subcategory=selected_subcategory, timeframe='month') }}" class="timeframe-btn {% if timeframe == 'month' %}active{% endif %}">This Month</a>
+                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, subcategory=selected_subcategory, timeframe='last_month') }}" class="timeframe-btn {% if timeframe == 'last_month' %}active{% endif %}">Last Month</a>
                 </div>
             </div>
         </div>
@@ -96,14 +96,33 @@
         </div>
 
         <!-- TYPE SWITCHER TABS -->
-        <div class="timeframe-selector" style="margin-bottom: 24px;">
+        <div class="timeframe-selector" style="margin-bottom: 20px;">
             <a href="{{ url_for('analytics', type='Income', timeframe=timeframe) }}" class="timeframe-btn {% if selected_type == 'Income' %}active{% endif %}">Income</a>
             <a href="{{ url_for('analytics', type='Debit', timeframe=timeframe) }}" class="timeframe-btn {% if selected_type == 'Debit' %}active{% endif %}">Debit</a>
             <a href="{{ url_for('analytics', type='Expense', timeframe=timeframe) }}" class="timeframe-btn {% if selected_type == 'Expense' %}active{% endif %}">Expense</a>
             <a href="{{ url_for('analytics', type='Investment', timeframe=timeframe) }}" class="timeframe-btn {% if selected_type == 'Investment' %}active{% endif %}">Investment</a>
         </div>
 
-        <!-- MAIN 2-COLUMN VIEW: PIE CHART (LEFT) & CATEGORIES / SUBCATEGORIES (RIGHT) -->
+        <!-- BREADCRUMBS -->
+        {% if selected_category %}
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 20px; background: var(--surface); border: 1px solid var(--border); padding: 10px 16px; border-radius: 8px; flex-wrap: wrap;">
+            <a href="{{ url_for('analytics', type=selected_type, timeframe=timeframe) }}" style="color: var(--primary); text-decoration: none; font-weight: 600;">
+                {{ selected_type }}
+            </a>
+            <span style="color: var(--text-muted);">/</span>
+            {% if selected_subcategory %}
+                <a href="{{ url_for('analytics', type=selected_type, category=selected_category, timeframe=timeframe) }}" style="color: var(--primary); text-decoration: none; font-weight: 600;">
+                    {{ selected_category }}
+                </a>
+                <span style="color: var(--text-muted);">/</span>
+                <span style="font-weight: 700; color: var(--text);">{{ selected_subcategory }}</span>
+            {% else %}
+                <span style="font-weight: 700; color: var(--text);">{{ selected_category }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- MAIN 2-COLUMN VIEW: PIE CHART (LEFT) & CATEGORIES / SUBCATEGORIES / REMARKS (RIGHT) -->
         <div class="analytics-charts-grid" style="grid-template-columns: 1.1fr 1fr; align-items: start;">
             
             <!-- LEFT: PIE / DONUT CHART -->
@@ -111,22 +130,30 @@
                 <div class="chart-card-header">
                     <div>
                         <h2>
-                            {% if selected_category %}
+                            {% if selected_subcategory %}
+                                {{ selected_subcategory }} Remarks Distribution
+                            {% elif selected_category %}
                                 {{ selected_category }} Breakdown
                             {% else %}
                                 {{ selected_type }} Distribution
                             {% endif %}
                         </h2>
                         <p>
-                            {% if selected_category %}
-                                Distribution across {{ selected_category }} subcategories
+                            {% if selected_subcategory %}
+                                Proportion by individual remarks and notes
+                            {% elif selected_category %}
+                                Distribution across {{ selected_category }} subcategories (Click any slice or item to view remarks)
                             {% else %}
                                 Proportion by category (Click segments or category cards to drill down)
                             {% endif %}
                         </p>
                     </div>
 
-                    {% if selected_category %}
+                    {% if selected_subcategory %}
+                    <a href="{{ url_for('analytics', type=selected_type, category=selected_category, timeframe=timeframe) }}" class="btn btn-secondary btn-sm">
+                        ← Back to {{ selected_category }}
+                    </a>
+                    {% elif selected_category %}
                     <a href="{{ url_for('analytics', type=selected_type, timeframe=timeframe) }}" class="btn btn-secondary btn-sm">
                         ← Back to all {{ selected_type }}
                     </a>
@@ -138,20 +165,24 @@
                 </div>
             </div>
 
-            <!-- RIGHT: CATEGORIES / SUBCATEGORIES LIST WITH DRILLDOWN -->
+            <!-- RIGHT: CATEGORIES / SUBCATEGORIES / REMARKS LIST -->
             <div class="chart-card">
                 <div class="chart-card-header">
                     <div>
                         <h2>
-                            {% if selected_category %}
+                            {% if selected_subcategory %}
+                                Remarks in {{ selected_subcategory }}
+                            {% elif selected_category %}
                                 Subcategories in {{ selected_category }}
                             {% else %}
                                 {{ selected_type }} Categories
                             {% endif %}
                         </h2>
                         <p>
-                            {% if selected_category %}
+                            {% if selected_subcategory %}
                                 Ranked by total amount spent / allocated
+                            {% elif selected_category %}
+                                Click any subcategory below to view its specific remarks
                             {% else %}
                                 Click any category below to view its subcategory breakdown
                             {% endif %}
@@ -159,14 +190,20 @@
                     </div>
                 </div>
 
-                <div class="top-categories-list" style="max-height: 400px; overflow-y: auto;">
-                    {% if selected_category %}
-                        {% if subcategory_data %}
-                            {% for item in subcategory_data %}
-                            <div class="category-rank-item" style="background: var(--surface-soft); padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border);">
+                <div class="top-categories-list" style="max-height: 420px; overflow-y: auto;">
+                    <!-- LEVEL 3: REMARKS BREAKDOWN -->
+                    {% if selected_subcategory %}
+                        {% if remarks_data %}
+                            {% for item in remarks_data %}
+                            <div class="category-rank-item" style="background: var(--surface-soft); padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 10px;">
                                 <div class="rank-header">
-                                    <span style="font-weight: 700; color: var(--text);">{{ item.subcategory }}</span>
+                                    <span style="font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 6px;">
+                                        📝 {{ item.remark }}
+                                    </span>
                                     <strong style="color: var(--text);">₹{{ item.total|inr }} <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">({{ item.percentage }}%)</span></strong>
+                                </div>
+                                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                                    {{ item.count }} transaction{% if item.count > 1 %}s{% endif %}
                                 </div>
                                 <div class="rank-bar-bg" style="margin-top: 6px;">
                                     <div class="rank-bar-fill" style="width: {{ item.percentage }}%;"></div>
@@ -175,17 +212,44 @@
                             {% endfor %}
                         {% else %}
                             <div class="empty-state" style="padding: 24px;">
+                                <p>No remarks recorded under {{ selected_subcategory }}.</p>
+                            </div>
+                        {% endif %}
+
+                    <!-- LEVEL 2: SUBCATEGORIES (CLICKABLE TO GO TO REMARKS) -->
+                    {% elif selected_category %}
+                        {% if subcategory_data %}
+                            {% for item in subcategory_data %}
+                            <a href="{{ url_for('analytics', type=selected_type, category=selected_category, subcategory=item.subcategory, timeframe=timeframe) }}" class="category-rank-item" style="background: var(--surface-soft); padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); text-decoration: none; display: block; margin-bottom: 10px; transition: all 0.2s ease;" onmouseover="this.style.transform='translateX(4px)'; this.style.borderColor='var(--border-focus)';" onmouseout="this.style.transform='translateX(0)'; this.style.borderColor='var(--border)';">
+                                <div class="rank-header">
+                                    <span style="font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 6px;">
+                                        💬 {{ item.subcategory }} <span style="font-size: 13px; color: var(--primary);">→</span>
+                                    </span>
+                                    <strong style="color: var(--text);">₹{{ item.total|inr }} <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">({{ item.percentage }}%)</span></strong>
+                                </div>
+                                <div style="font-size: 11px; color: var(--primary); margin-top: 3px; font-weight: 600;">
+                                    Click to view remarks
+                                </div>
+                                <div class="rank-bar-bg" style="margin-top: 6px;">
+                                    <div class="rank-bar-fill" style="width: {{ item.percentage }}%;"></div>
+                                </div>
+                            </a>
+                            {% endfor %}
+                        {% else %}
+                            <div class="empty-state" style="padding: 24px;">
                                 <p>No subcategories found under {{ selected_category }}.</p>
                             </div>
                         {% endif %}
+
+                    <!-- LEVEL 1: CATEGORIES -->
                     {% else %}
                         {% if category_data %}
                             {% for item in category_data %}
-                            <a href="{{ url_for('analytics', type=selected_type, category=item.category, timeframe=timeframe) }}" class="category-rank-item" style="background: var(--surface-soft); padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); text-decoration: none; transition: all 0.2s ease;" onmouseover="this.style.transform='translateX(4px)'; this.style.borderColor='var(--border-focus)';" onmouseout="this.style.transform='translateX(0)'; this.style.borderColor='var(--border)';">
+                            <a href="{{ url_for('analytics', type=selected_type, category=item.category, timeframe=timeframe) }}" class="category-rank-item" style="background: var(--surface-soft); padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); text-decoration: none; display: block; margin-bottom: 10px; transition: all 0.2s ease;" onmouseover="this.style.transform='translateX(4px)'; this.style.borderColor='var(--border-focus)';" onmouseout="this.style.transform='translateX(0)'; this.style.borderColor='var(--border)';">
                                 <div class="rank-header">
-                                    <span style="font-weight: 700; color: var(--text);">
+                                    <span style="font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 6px;">
                                         {% if selected_type == 'Investment' %}💎{% elif selected_type == 'Income' %}↗{% elif selected_type == 'Debit' %}💳{% else %}📁{% endif %}
-                                        {{ item.category }} →
+                                        {{ item.category }} <span style="font-size: 13px; color: var(--primary);">→</span>
                                     </span>
                                     <strong style="color: var(--text);">₹{{ item.total|inr }} <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">({{ item.percentage }}%)</span></strong>
                                 </div>
@@ -204,12 +268,89 @@
             </div>
         </div>
 
+        <!-- LEVEL 3: DETAILED TRANSACTIONS TABLE WITH REMARKS -->
+        {% if selected_subcategory and subcategory_transactions %}
+        <div class="transactions-section" style="margin-top: 28px;">
+            <div class="section-header">
+                <div>
+                    <h2>📋 Detailed Transactions in {{ selected_subcategory }} ({{ subcategory_transactions|length }})</h2>
+                    <p>Remarks, narrations, accounts, and exact amounts for this selection.</p>
+                </div>
+                <a href="{{ url_for('analytics', type=selected_type, category=selected_category, timeframe=timeframe) }}" class="btn btn-secondary btn-sm">
+                    ← Back to {{ selected_category }}
+                </a>
+            </div>
+
+            <div class="table-responsive">
+                <table class="transaction-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Remark / Note</th>
+                            <th>Description</th>
+                            <th>Place / Account</th>
+                            <th style="text-align: right;">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tx in subcategory_transactions %}
+                        <tr>
+                            <td class="date-cell">{{ tx.date }}</td>
+                            <td>
+                                {% if tx.remarks and tx.remarks.strip() %}
+                                    <span style="display: inline-block; background: var(--primary-light, rgba(36, 117, 104, 0.1)); color: var(--primary); padding: 4px 10px; border-radius: 6px; font-weight: 600; font-size: 13px;">
+                                        {{ tx.remarks }}
+                                    </span>
+                                {% else %}
+                                    <span style="color: var(--text-muted); font-style: italic; font-size: 13px;">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span style="color: var(--text); font-size: 13px;">{{ tx.description or '—' }}</span>
+                            </td>
+                            <td>
+                                {% if tx.place or tx.account %}
+                                    <span style="color: var(--text-soft); font-size: 13px;">
+                                        {{ tx.place }}{% if tx.place and tx.account %} • {% endif %}{{ tx.account }}
+                                    </span>
+                                {% else %}
+                                    <span style="color: var(--text-muted); font-size: 13px;">—</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: right; font-weight: 700; color: var(--text); white-space: nowrap;">
+                                ₹{{ tx.amount|inr }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- HIDDEN DATA FOR PIE CHART -->
         <script id="chartDataJson" type="application/json">
             {
                 "selected_category": {{ selected_category|tojson }},
-                "category_labels": [{% for item in (subcategory_data if selected_category else category_data) %}"{{ item.subcategory if selected_category else item.category }}"{% if not loop.last %}, {% endif %}{% endfor %}],
-                "category_values": [{% for item in (subcategory_data if selected_category else category_data) %}{{ item.total }}{% if not loop.last %}, {% endif %}{% endfor %}]
+                "selected_subcategory": {{ selected_subcategory|tojson }},
+                "category_labels": [
+                    {% if selected_subcategory %}
+                        {% for item in remarks_data %}"{{ item.remark|replace('"', '\\"') }}"{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% elif selected_category %}
+                        {% for item in subcategory_data %}"{{ item.subcategory|replace('"', '\\"') }}"{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% else %}
+                        {% for item in category_data %}"{{ item.category|replace('"', '\\"') }}"{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% endif %}
+                ],
+                "category_values": [
+                    {% if selected_subcategory %}
+                        {% for item in remarks_data %}{{ item.total }}{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% elif selected_category %}
+                        {% for item in subcategory_data %}{{ item.total }}{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% else %}
+                        {% for item in category_data %}{{ item.total }}{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% endif %}
+                ]
             }
         </script>
     </main>
@@ -304,12 +445,20 @@
                         }
                     },
                     onClick: (evt, elements) => {
-                        if (elements.length > 0 && !data.selected_category) {
+                        if (elements.length > 0) {
                             const index = elements[0].index;
-                            const category = data.category_labels[index];
+                            const clickedLabel = data.category_labels[index];
                             const urlParams = new URLSearchParams(window.location.search);
-                            urlParams.set("category", category);
-                            window.location.search = urlParams.toString();
+                            
+                            if (!data.selected_category) {
+                                // Level 1 -> Level 2
+                                urlParams.set("category", clickedLabel);
+                                window.location.search = urlParams.toString();
+                            } else if (!data.selected_subcategory) {
+                                // Level 2 -> Level 3 (Clicking slice opens Remarks)
+                                urlParams.set("subcategory", clickedLabel);
+                                window.location.search = urlParams.toString();
+                            }
                         }
                     }
                 }

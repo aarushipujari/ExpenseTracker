@@ -1126,6 +1126,7 @@ def analytics():
         selected_type = "Debit"
 
     selected_category = request.args.get("category", "").strip()
+    selected_subcategory = request.args.get("subcategory", "").strip()
     timeframe = request.args.get("timeframe", "all")
 
     date_filter = ""
@@ -1197,6 +1198,8 @@ def analytics():
 
     category_data = []
     subcategory_data = []
+    remarks_data = []
+    subcategory_transactions = []
 
     # --------------------------------------------------------
     # 1. DEBIT (Expense + Investment)
@@ -1207,7 +1210,7 @@ def analytics():
             WHERE user_id = ?
             AND (type = 'Expense' OR type = 'Investment' OR type != 'Income')
             {date_filter}
-            ORDER BY amount DESC
+            ORDER BY date DESC, id DESC
         """, [user_id] + date_params).fetchall()
 
         if not selected_category:
@@ -1224,7 +1227,8 @@ def analytics():
             selected_type_total = sum(item["total"] for item in category_data) or 1.0
             for item in category_data:
                 item["percentage"] = round((item["total"] / selected_type_total) * 100, 1)
-        else:
+
+        elif not selected_subcategory:
             sub_map = {}
             for r in debit_txs:
                 cat_val = r["category"] or "Other"
@@ -1241,6 +1245,32 @@ def analytics():
             sub_total = sum(item["total"] for item in subcategory_data) or 1.0
             for item in subcategory_data:
                 item["percentage"] = round((item["total"] / sub_total) * 100, 1)
+
+        else:
+            matched = []
+            for r in debit_txs:
+                cat_val = r["category"] or "Other"
+                if is_investment_category(cat_val) or r["type"] == "Investment":
+                    c_name, s_name = get_investment_category_and_sub(r)
+                else:
+                    c_name = cat_val.strip() or "Other"
+                    s_name = (r["subcategory"] or r["description"] or "General").strip() or "General"
+
+                c_match = (c_name.lower() == selected_category.lower() or selected_category.lower() in [c_name.lower(), str(r["category"]).lower(), str(r["subcategory"]).lower()])
+                s_match = (s_name.lower() == selected_subcategory.lower() or selected_subcategory.lower() in [s_name.lower(), str(r["subcategory"]).lower(), str(r["description"]).lower()])
+                if c_match and s_match:
+                    matched.append(r)
+
+            rem_map = {}
+            for r in matched:
+                rem = (r["remarks"] or "").strip() or (r["description"] or "").strip() or "General"
+                rem_map[rem] = rem_map.get(rem, {"total": 0.0, "count": 0})
+                rem_map[rem]["total"] += float(r["amount"] or 0)
+                rem_map[rem]["count"] += 1
+
+            rem_total = sum(v["total"] for v in rem_map.values()) or 1.0
+            remarks_data = [{"remark": k, "total": round(v["total"], 2), "count": v["count"], "percentage": round((v["total"] / rem_total) * 100, 1)} for k, v in sorted(rem_map.items(), key=lambda x: x[1]["total"], reverse=True)]
+            subcategory_transactions = matched
 
     # --------------------------------------------------------
     # 2. INVESTMENT HIERARCHY
@@ -1261,7 +1291,7 @@ def analytics():
                 )
             )
             {date_filter}
-            ORDER BY amount DESC
+            ORDER BY date DESC, id DESC
         """, [user_id] + date_params).fetchall()
 
         if not selected_category:
@@ -1269,22 +1299,43 @@ def analytics():
             for r in inv_txs:
                 c, s = get_investment_category_and_sub(r)
                 cat_map[c] = cat_map.get(c, 0.0) + float(r["amount"] or 0)
-            
+
             category_data = [{"category": k, "total": round(v, 2)} for k, v in sorted(cat_map.items(), key=lambda x: x[1], reverse=True)]
             selected_type_total = sum(item["total"] for item in category_data) or 1.0
             for item in category_data:
                 item["percentage"] = round((item["total"] / selected_type_total) * 100, 1)
-        else:
+
+        elif not selected_subcategory:
             sub_map = {}
             for r in inv_txs:
                 c, s = get_investment_category_and_sub(r)
                 if c.lower() == selected_category.lower() or selected_category.lower() in [c.lower(), str(r["category"]).lower(), str(r["subcategory"]).lower()]:
                     sub_map[s] = sub_map.get(s, 0.0) + float(r["amount"] or 0)
-            
+
             subcategory_data = [{"subcategory": k, "total": round(v, 2)} for k, v in sorted(sub_map.items(), key=lambda x: x[1], reverse=True)]
             sub_total = sum(item["total"] for item in subcategory_data) or 1.0
             for item in subcategory_data:
                 item["percentage"] = round((item["total"] / sub_total) * 100, 1)
+
+        else:
+            matched = []
+            for r in inv_txs:
+                c, s = get_investment_category_and_sub(r)
+                c_match = (c.lower() == selected_category.lower() or selected_category.lower() in [c.lower(), str(r["category"]).lower(), str(r["subcategory"]).lower()])
+                s_match = (s.lower() == selected_subcategory.lower() or selected_subcategory.lower() in [s.lower(), str(r["subcategory"]).lower(), str(r["description"]).lower()])
+                if c_match and s_match:
+                    matched.append(r)
+
+            rem_map = {}
+            for r in matched:
+                rem = (r["remarks"] or "").strip() or (r["description"] or "").strip() or "General"
+                rem_map[rem] = rem_map.get(rem, {"total": 0.0, "count": 0})
+                rem_map[rem]["total"] += float(r["amount"] or 0)
+                rem_map[rem]["count"] += 1
+
+            rem_total = sum(v["total"] for v in rem_map.values()) or 1.0
+            remarks_data = [{"remark": k, "total": round(v["total"], 2), "count": v["count"], "percentage": round((v["total"] / rem_total) * 100, 1)} for k, v in sorted(rem_map.items(), key=lambda x: x[1]["total"], reverse=True)]
+            subcategory_transactions = matched
 
     # --------------------------------------------------------
     # 3. EXPENSE HIERARCHY
@@ -1310,7 +1361,8 @@ def analytics():
             selected_type_total = sum(item["total"] for item in category_data) or 1.0
             for item in category_data:
                 item["percentage"] = round((item["total"] / selected_type_total) * 100, 1)
-        else:
+
+        elif not selected_subcategory:
             sub_rows = conn.execute(f"""
                 SELECT COALESCE(NULLIF(TRIM(subcategory), ''), NULLIF(TRIM(description), ''), 'General') AS subcategory, SUM(amount) AS total
                 FROM transactions
@@ -1335,6 +1387,38 @@ def analytics():
             for item in subcategory_data:
                 item["percentage"] = round((item["total"] / sub_total) * 100, 1)
 
+        else:
+            exp_txs = conn.execute(f"""
+                SELECT * FROM transactions
+                WHERE user_id = ?
+                AND type = 'Expense'
+                AND LOWER(TRIM(category)) NOT IN (
+                    'investment', 'investments', 'sip', 'mutual fund', 'mutual funds',
+                    'stocks', 'equity', 'bonds', 'crypto', 'gold', 'insurance',
+                    'fixed deposit', 'fd', 'ppf', 'nps', 'reit'
+                )
+                AND category = ?
+                {date_filter}
+                ORDER BY date DESC, id DESC
+            """, [user_id, selected_category] + date_params).fetchall()
+
+            matched = []
+            for r in exp_txs:
+                s_name = (r["subcategory"] or r["description"] or "General").strip() or "General"
+                if s_name.lower() == selected_subcategory.lower() or selected_subcategory.lower() in [s_name.lower(), str(r["subcategory"]).lower(), str(r["description"]).lower()]:
+                    matched.append(r)
+
+            rem_map = {}
+            for r in matched:
+                rem = (r["remarks"] or "").strip() or (r["description"] or "").strip() or "General"
+                rem_map[rem] = rem_map.get(rem, {"total": 0.0, "count": 0})
+                rem_map[rem]["total"] += float(r["amount"] or 0)
+                rem_map[rem]["count"] += 1
+
+            rem_total = sum(v["total"] for v in rem_map.values()) or 1.0
+            remarks_data = [{"remark": k, "total": round(v["total"], 2), "count": v["count"], "percentage": round((v["total"] / rem_total) * 100, 1)} for k, v in sorted(rem_map.items(), key=lambda x: x[1]["total"], reverse=True)]
+            subcategory_transactions = matched
+
     # --------------------------------------------------------
     # 4. INCOME HIERARCHY
     # --------------------------------------------------------
@@ -1354,7 +1438,8 @@ def analytics():
             selected_type_total = sum(item["total"] for item in category_data) or 1.0
             for item in category_data:
                 item["percentage"] = round((item["total"] / selected_type_total) * 100, 1)
-        else:
+
+        elif not selected_subcategory:
             sub_rows = conn.execute(f"""
                 SELECT COALESCE(NULLIF(TRIM(subcategory), ''), NULLIF(TRIM(description), ''), 'General') AS subcategory, SUM(amount) AS total
                 FROM transactions
@@ -1374,21 +1459,52 @@ def analytics():
             for item in subcategory_data:
                 item["percentage"] = round((item["total"] / sub_total) * 100, 1)
 
+        else:
+            inc_txs = conn.execute(f"""
+                SELECT * FROM transactions
+                WHERE user_id = ?
+                AND type = 'Income'
+                AND category = ?
+                {date_filter}
+                ORDER BY date DESC, id DESC
+            """, [user_id, selected_category] + date_params).fetchall()
+
+            matched = []
+            for r in inc_txs:
+                s_name = (r["subcategory"] or r["description"] or "General").strip() or "General"
+                if s_name.lower() == selected_subcategory.lower() or selected_subcategory.lower() in [s_name.lower(), str(r["subcategory"]).lower(), str(r["description"]).lower()]:
+                    matched.append(r)
+
+            rem_map = {}
+            for r in matched:
+                rem = (r["remarks"] or "").strip() or (r["description"] or "").strip() or "General"
+                rem_map[rem] = rem_map.get(rem, {"total": 0.0, "count": 0})
+                rem_map[rem]["total"] += float(r["amount"] or 0)
+                rem_map[rem]["count"] += 1
+
+            rem_total = sum(v["total"] for v in rem_map.values()) or 1.0
+            remarks_data = [{"remark": k, "total": round(v["total"], 2), "count": v["count"], "percentage": round((v["total"] / rem_total) * 100, 1)} for k, v in sorted(rem_map.items(), key=lambda x: x[1]["total"], reverse=True)]
+            subcategory_transactions = matched
+
     conn.close()
 
     return render_template(
         "analytics.html",
         selected_type=selected_type,
         selected_category=selected_category,
+        selected_subcategory=selected_subcategory,
         timeframe=timeframe,
         category_data=category_data,
         subcategory_data=subcategory_data,
+        remarks_data=remarks_data,
+        subcategory_transactions=subcategory_transactions,
         total_income=float(total_income or 0),
         total_debit=float(total_debit or 0),
         total_expenses=float(total_expenses or 0),
         total_investments=float(total_investments or 0),
         balance=float(balance or 0)
     )
+
 
 
 # ============================================================
