@@ -79,20 +79,20 @@
 
             const instance = createParticleText(container, {
                 text: 'Expense Tracker',
-                particleSize: 2.2,
-                density: 3.5,
-                color: isDark ? '#ffffff' : '#1C2D27',
-                highlightColor: isDark ? '#2dd4bf' : '#247568',
-                scatter: 140,
-                gatherDuration: 1500,
-                stagger: 350,
-                pointerRepel: 14,
-                repelRadius: 50,
-                idleDrift: 0.5,
+                particleSize: 1.8,
+                density: 2.2,
+                color: isDark ? '#f8fafc' : '#1e293b',
+                highlightColor: isDark ? '#2dd4bf' : '#0d9488',
+                scatter: 90,
+                gatherDuration: 1300,
+                stagger: 240,
+                pointerRepel: 10,
+                repelRadius: 40,
+                idleDrift: 0.35,
                 trigger: 'hover',
-                fontSize: 'clamp(3rem, 7.5vw, 5rem)',
+                fontSize: 'clamp(2.5rem, 6.5vw, 4.4rem)',
                 fontWeight: 800,
-                fontFamily: "'Segoe UI', system-ui, sans-serif",
+                fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif",
                 glow: true
             });
 
@@ -101,8 +101,8 @@
                 const darkNow = document.documentElement.classList.contains('dark');
                 if (instance && instance.setTheme) {
                     instance.setTheme(
-                        darkNow ? '#ffffff' : '#1C2D27',
-                        darkNow ? '#2dd4bf' : '#247568'
+                        darkNow ? '#f8fafc' : '#1e293b',
+                        darkNow ? '#2dd4bf' : '#0d9488'
                     );
                 }
             });

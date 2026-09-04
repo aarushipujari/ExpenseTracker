@@ -1,6 +1,10 @@
 /**
- * ParticleText - React Bits Vanilla JS Port
- * Interactive canvas particle typography with gather, hover repel, idle drift, and glow physics.
+ * ParticleText - Luxury Stardust Typography
+ * Features:
+ * - High-density organic stardust distribution (eliminates the rigid grid/matrix look)
+ * - Always renders anti-aliased circles with soft ambient bloom
+ * - Natural cursor parting and smooth gather physics
+ * - Dynamic light/dark theme luminosity
  */
 
 const hexToRgb = hex => {
@@ -36,38 +40,36 @@ const resolveFontSize = (value, container, fontWeight, fontFamily) => {
   probe.style.fontWeight = String(fontWeight);
   probe.style.fontFamily = fontFamily;
   container.appendChild(probe);
-  const size = parseFloat(window.getComputedStyle(probe).fontSize) || 96;
+  const size = parseFloat(window.getComputedStyle(probe).fontSize) || 72;
   probe.remove();
   return size;
 };
 
 const waitForFonts = async font => {
   if (!('fonts' in document)) return;
-
   try {
     await document.fonts.load(font);
   } catch {}
-
   await document.fonts.ready;
 };
 
 function createParticleText(container, options = {}) {
   const {
     text = 'Expense Tracker',
-    particleSize = 2,
-    density = 4,
-    color = '#ffffff',
-    highlightColor = '#8b5cf6',
-    scatter = 120,
-    gatherDuration = 1500,
-    stagger = 350,
+    particleSize = 1.6,
+    density = 2.2,
+    color = '#f8fafc',
+    highlightColor = '#2dd4bf',
+    scatter = 100,
+    gatherDuration = 1400,
+    stagger = 280,
     pointerRepel = 12,
     repelRadius = 45,
-    idleDrift = 0.45,
+    idleDrift = 0.35,
     trigger = 'hover',
-    fontSize = 'clamp(2.4rem, 7vw, 4.2rem)',
+    fontSize = 'clamp(2.5rem, 6.2vw, 4.2rem)',
     fontWeight = 800,
-    fontFamily = 'inherit',
+    fontFamily = "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     glow = true
   } = options;
 
@@ -118,9 +120,9 @@ function createParticleText(container, options = {}) {
     particles.forEach(particle => {
       if (fromScatter) {
         const angle = particle.seed * Math.PI * 2;
-        const distance = spread * (0.35 + particle.depth * 0.75);
-        particle.x = particle.targetX + Math.cos(angle) * distance + (particle.depth - 0.5) * spread * 0.55;
-        particle.y = particle.targetY + Math.sin(angle) * distance + (particle.seed - 0.5) * spread * 0.55;
+        const distance = spread * (0.3 + particle.depth * 0.7);
+        particle.x = particle.targetX + Math.cos(angle) * distance + (particle.depth - 0.5) * spread * 0.4;
+        particle.y = particle.targetY + Math.sin(angle) * distance + (particle.seed - 0.5) * spread * 0.4;
       }
 
       particle.startX = particle.x;
@@ -132,17 +134,11 @@ function createParticleText(container, options = {}) {
     gathering = true;
   };
 
+  // Always draw anti-aliased smooth circular particles (never jagged squares!)
   const drawParticle = particle => {
-    const size = particle.size;
     ctx.fillStyle = particle.color;
-
-    if (size <= 2.1) {
-      ctx.fillRect(particle.x - size / 2, particle.y - size / 2, size, size);
-      return;
-    }
-
     ctx.beginPath();
-    ctx.arc(particle.x, particle.y, size / 2, 0, Math.PI * 2);
+    ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
     ctx.fill();
   };
 
@@ -150,14 +146,14 @@ function createParticleText(container, options = {}) {
     ctx.clearRect(0, 0, width, height);
 
     if (glow && !reducedMotion) {
-      ctx.shadowBlur = particleSize * 3;
+      ctx.shadowBlur = 6;
       ctx.shadowColor = highlightColor;
     } else {
       ctx.shadowBlur = 0;
     }
 
-    pointer.smoothX += (pointer.x - pointer.smoothX) * 0.18;
-    pointer.smoothY += (pointer.y - pointer.smoothY) * 0.18;
+    pointer.smoothX += (pointer.x - pointer.smoothX) * 0.2;
+    pointer.smoothY += (pointer.y - pointer.smoothY) * 0.2;
 
     let complete = true;
 
@@ -174,9 +170,9 @@ function createParticleText(container, options = {}) {
         baseY = particle.startY + (particle.targetY - particle.startY) * eased;
         if (progress < 1) complete = false;
       } else if (!reducedMotion && idleDrift > 0) {
-        const driftTime = now * 0.001;
-        baseX += Math.sin(driftTime * 0.9 + particle.seed * 10) * idleDrift * particle.depth;
-        baseY += Math.cos(driftTime * 0.75 + particle.depth * 10) * idleDrift * particle.depth;
+        const driftTime = now * 0.0008;
+        baseX += Math.sin(driftTime * 0.9 + particle.seed * 8) * idleDrift * particle.depth;
+        baseY += Math.cos(driftTime * 0.75 + particle.depth * 8) * idleDrift * particle.depth;
       }
 
       if (pointer.active && !reducedMotion && pointerRepel > 0 && repelRadius > 0) {
@@ -190,11 +186,11 @@ function createParticleText(container, options = {}) {
         }
       }
 
-      const follow = reducedMotion ? 1 : 0.22;
+      const follow = reducedMotion ? 1 : 0.24;
       particle.x += (baseX - particle.x) * follow;
       particle.y += (baseY - particle.y) * follow;
 
-      ctx.globalAlpha = clamp(0.35 + progress * 0.65, 0, 1);
+      ctx.globalAlpha = clamp(0.4 + progress * 0.6, 0, 1);
       drawParticle(particle);
     });
 
@@ -242,12 +238,12 @@ function createParticleText(container, options = {}) {
     if (!offCtx) return;
 
     const content = String(text || ' ');
-    const maxTextWidth = width * 0.92;
+    const maxTextWidth = width * 0.94;
     offCtx.font = font;
     let metrics = offCtx.measureText(content);
     const measuredWidth = Math.max(1, metrics.width);
     if (measuredWidth > maxTextWidth) {
-      resolvedSize = Math.max(18, resolvedSize * (maxTextWidth / measuredWidth));
+      resolvedSize = Math.max(20, resolvedSize * (maxTextWidth / measuredWidth));
       font = `${fontWeight} ${resolvedSize}px ${resolvedFamily}`;
       await waitForFonts(font);
       if (currentBuild !== buildId) return;
@@ -259,7 +255,7 @@ function createParticleText(container, options = {}) {
     const right = Math.ceil(metrics.actualBoundingBoxRight || metrics.width);
     const ascent = Math.ceil(metrics.actualBoundingBoxAscent || resolvedSize * 0.78);
     const descent = Math.ceil(metrics.actualBoundingBoxDescent || resolvedSize * 0.22);
-    const padding = Math.max(12, Math.ceil(resolvedSize * 0.08));
+    const padding = Math.max(16, Math.ceil(resolvedSize * 0.1));
     const textWidth = Math.max(1, left + right);
     const textHeight = Math.max(1, ascent + descent);
 
@@ -274,22 +270,31 @@ function createParticleText(container, options = {}) {
 
     const imageData = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
     const targets = [];
-    const step = Math.max(2, Math.floor(density));
+    // High-resolution sampling step (dense stardust)
+    const step = Math.max(1.8, Number(density) || 2.2);
 
     for (let y = 0; y < offscreen.height; y += step) {
       for (let x = 0; x < offscreen.width; x += step) {
-        const alpha = imageData.data[(y * offscreen.width + x) * 4 + 3];
-        if (alpha > 40) {
+        const px = Math.floor(x);
+        const py = Math.floor(y);
+        const alpha = imageData.data[(py * offscreen.width + px) * 4 + 3];
+
+        if (alpha > 35) {
+          // Subtle organic micro-jitter to prevent artificial grid/matrix alignment
+          const jitterX = ((Math.sin(px * 12.9898 + py * 78.233) * 43758.5453) % 1) * step * 0.35;
+          const jitterY = ((Math.cos(px * 39.346 + py * 11.135) * 43758.5453) % 1) * step * 0.35;
+
           targets.push({
-            x: width / 2 - offscreen.width / 2 + x,
-            y: height / 2 - offscreen.height / 2 + y,
+            x: width / 2 - offscreen.width / 2 + x + jitterX,
+            y: height / 2 - offscreen.height / 2 + y + jitterY,
             alpha: alpha / 255
           });
         }
       }
     }
 
-    const maxParticles = Math.max(900, Math.min(5200, Math.floor((width * height) / 90)));
+    // Allow generous particle budget so text forms dense, solid, glowing letters
+    const maxParticles = Math.max(1800, Math.min(5500, Math.floor((width * height) / 38)));
     const stride = Math.max(1, Math.ceil(targets.length / maxParticles));
     const baseRgb = hexToRgb(color);
     const highlightRgb = hexToRgb(highlightColor);
@@ -297,13 +302,18 @@ function createParticleText(container, options = {}) {
 
     particles = selected.map((target, index) => {
       const seed = ((index * 9301 + 49297) % 233280) / 233280;
-      const depth = 0.45 + (((index * 233 + 97) % 1000) / 1000) * 0.9;
-      const blend = baseRgb && highlightRgb ? clamp(target.x / Math.max(1, width) + (seed - 0.5) * 0.35, 0, 1) : 0;
+      const depth = 0.5 + (((index * 233 + 97) % 1000) / 1000) * 0.8;
+
+      // Radiant color blend across the particle field
+      const progressX = clamp((target.x - (width / 2 - offscreen.width / 2)) / Math.max(1, offscreen.width), 0, 1);
+      const blend = clamp(progressX * 0.85 + (seed - 0.5) * 0.25, 0, 1);
       const particleColor = baseRgb && highlightRgb ? rgbToCss(mixRgb(baseRgb, highlightRgb, blend)) : color;
+
       const angle = seed * Math.PI * 2;
-      const distance = (reducedMotion ? 0 : scatter) * (0.35 + depth * 0.75);
-      const startX = target.x + Math.cos(angle) * distance + (seed - 0.5) * scatter * 0.45;
-      const startY = target.y + Math.sin(angle) * distance + (depth - 0.9) * scatter * 0.45;
+      const distance = (reducedMotion ? 0 : scatter) * (0.3 + depth * 0.7);
+      const startX = target.x + Math.cos(angle) * distance;
+      const startY = target.y + Math.sin(angle) * distance;
+      const radius = Math.max(0.65, (particleSize / 2) * (0.8 + target.alpha * 0.35));
 
       return {
         x: reducedMotion ? target.x : startX,
@@ -312,7 +322,7 @@ function createParticleText(container, options = {}) {
         startY,
         targetX: target.x,
         targetY: target.y,
-        size: Math.max(0.6, particleSize * (0.75 + target.alpha * 0.45)),
+        radius,
         color: particleColor,
         seed,
         depth,
@@ -397,7 +407,6 @@ function createParticleText(container, options = {}) {
     },
     triggerGather: () => startGather(true),
     setTheme: (newColor, newHighlight) => {
-      // Re-sample with updated theme colors
       options.color = newColor;
       options.highlightColor = newHighlight;
       sampleText();
