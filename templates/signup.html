@@ -43,8 +43,11 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Email Address</label>
-                    <input type="email" name="email" value="{{ email or '' }}" placeholder="you@example.com" required>
+                    <label>Gmail Address</label>
+                    <input type="email" name="email" value="{{ email or '' }}" placeholder="username@gmail.com" pattern=".*@(gmail|googlemail)\.com$" title="Please enter a valid Gmail address (@gmail.com)" required>
+                    <small style="color: var(--text-soft); font-size: 12px; display: block; margin-top: 4px;">
+                        Must be a valid @gmail.com address for password recovery.
+                    </small>
                 </div>
 
                 <div class="form-group">

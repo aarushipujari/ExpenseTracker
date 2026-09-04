@@ -10,6 +10,10 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from werkzeug.security import generate_password_hash, check_password_hash
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
 
 
 app = Flask(__name__)
@@ -1664,6 +1668,70 @@ def import_excel():
     )
 
 
+def is_valid_gmail(email):
+    if not email:
+        return False
+    email = email.strip().lower()
+    pattern = r'^[a-zA-Z0-9._%+-]+@(?:gmail|googlemail)\.com$'
+    return bool(re.match(pattern, email))
+
+
+def get_reset_serializer():
+    return URLSafeTimedSerializer(app.secret_key)
+
+
+def send_password_reset_email(to_email, name, reset_url):
+    sender_email = os.environ.get("GMAIL_USER") or os.environ.get("MAIL_USERNAME")
+    sender_password = os.environ.get("GMAIL_APP_PASSWORD") or os.environ.get("MAIL_PASSWORD")
+    
+    if not sender_email or not sender_password:
+        return False, "Email sender credentials not configured on server."
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Reset Your Expense Tracker Password"
+        msg["From"] = f"Expense Tracker <{sender_email}>"
+        msg["To"] = to_email
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; padding: 24px; }}
+                .card {{ max-width: 480px; margin: 0 auto; background: #ffffff; padding: 32px; border-radius: 12px; border: 1px solid #e2e8f0; }}
+                .btn {{ display: inline-block; background-color: #247568; color: #ffffff !important; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 700; margin: 20px 0; }}
+                .footer {{ margin-top: 24px; font-size: 12px; color: #64748b; }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h2 style="color: #247568; margin-top: 0;">Password Reset Request</h2>
+                <p>Hello {name or 'there'},</p>
+                <p>We received a request to reset the password for your Expense Tracker account linked to <strong>{to_email}</strong>.</p>
+                <p>Click the button below to set a new password (valid for 1 hour):</p>
+                <a href="{reset_url}" class="btn">Reset Password</a>
+                <p style="font-size: 13px; color: #64748b;">If the button above does not work, copy and paste this link into your browser:<br><a href="{reset_url}">{reset_url}</a></p>
+                <p style="font-size: 13px; color: #64748b;">If you did not request this, you can safely ignore this email.</p>
+                <div class="footer">
+                    <p>© Expense Tracker</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, [to_email], msg.as_string())
+        return True, "Email sent successfully."
+    except Exception as e:
+        return False, str(e)
+
+
 # ============================================================
 # SIGNUP / AUTH
 # ============================================================
@@ -1683,6 +1751,10 @@ def signup():
         flash("Please fill in all fields.", "danger")
         return render_template("signup.html", name=name, email=email)
 
+    if not is_valid_gmail(email):
+        flash("Only valid Gmail addresses (@gmail.com) are accepted.", "danger")
+        return render_template("signup.html", name=name, email=email)
+
     if len(password) < 8:
         flash("Password must be at least 8 characters.", "danger")
         return render_template("signup.html", name=name, email=email)
@@ -1691,7 +1763,7 @@ def signup():
     existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
     if existing:
         conn.close()
-        flash("An account with this email already exists.", "danger")
+        flash("An account with this Gmail address already exists.", "danger")
         return render_template("signup.html", name=name, email=email)
 
     password_hash = generate_password_hash(password)
@@ -1738,6 +1810,86 @@ def login():
 
     flash(f"Welcome back, {user['name']}!", "success")
     return redirect(url_for("home"))
+
+
+# ============================================================
+# FORGOT & RESET PASSWORD
+# ============================================================
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "GET":
+        if "user_id" in session:
+            return redirect(url_for("home"))
+        return render_template("forgot_password.html")
+
+    email = request.form.get("email", "").strip().lower()
+    if not email or not is_valid_gmail(email):
+        flash("Please enter a valid Gmail address (@gmail.com).", "danger")
+        return render_template("forgot_password.html", email=email)
+
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    conn.close()
+
+    if not user:
+        flash("No account found with this Gmail address.", "danger")
+        return render_template("forgot_password.html", email=email)
+
+    serializer = get_reset_serializer()
+    token = serializer.dumps(email, salt="password-reset-salt")
+    reset_url = url_for("reset_password", token=token, _external=True)
+
+    sent, msg = send_password_reset_email(user["email"], user["name"], reset_url)
+    if sent:
+        flash(f"A password reset link has been sent to {user['email']}! Please check your inbox.", "success")
+        return render_template("forgot_password.html", email=email)
+    else:
+        # Graceful fallback: link displayed on-screen so user is never locked out
+        flash(f"Password reset link generated for {user['email']}.", "info")
+        return render_template("forgot_password.html", email=email, direct_reset_url=reset_url)
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    serializer = get_reset_serializer()
+    try:
+        email = serializer.loads(token, salt="password-reset-salt", max_age=3600)
+    except (SignatureExpired, BadTimeSignature):
+        flash("The password reset link is invalid or has expired. Please request a new one.", "danger")
+        return redirect(url_for("forgot_password"))
+
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    if not user:
+        conn.close()
+        flash("User account not found.", "danger")
+        return redirect(url_for("signup"))
+
+    if request.method == "GET":
+        conn.close()
+        return render_template("reset_password.html", email=email, token=token)
+
+    password = request.form.get("password", "")
+    confirm_password = request.form.get("confirm_password", "")
+
+    if not password or len(password) < 8:
+        conn.close()
+        flash("Password must be at least 8 characters.", "danger")
+        return render_template("reset_password.html", email=email, token=token)
+
+    if password != confirm_password:
+        conn.close()
+        flash("Passwords do not match. Please try again.", "danger")
+        return render_template("reset_password.html", email=email, token=token)
+
+    new_hash = generate_password_hash(password)
+    conn.execute("UPDATE users SET password = ? WHERE email = ?", (new_hash, email))
+    conn.commit()
+    conn.close()
+
+    flash("Your password has been reset successfully! You can now log in.", "success")
+    return redirect(url_for("login"))
 
 
 # ============================================================
