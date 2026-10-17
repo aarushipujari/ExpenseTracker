@@ -698,6 +698,28 @@ def home():
         ORDER BY account ASC
     """, (user_id,)).fetchall()]
 
+    # Available months for filtering & deletion
+    month_rows = conn.execute("""
+        SELECT SUBSTR(date, 1, 7) AS month_key, COUNT(*) AS tx_count
+        FROM transactions
+        WHERE user_id = ? AND date IS NOT NULL AND length(date) >= 7
+        GROUP BY SUBSTR(date, 1, 7)
+        ORDER BY month_key DESC
+    """, (user_id,)).fetchall()
+
+    months = []
+    for r in month_rows:
+        m_key = r["month_key"]
+        try:
+            m_label = datetime.strptime(m_key, "%Y-%m").strftime("%B %Y")
+        except Exception:
+            m_label = m_key
+        months.append({
+            "key": m_key,
+            "label": m_label,
+            "count": r["tx_count"]
+        })
+
     conn.close()
 
     today_str = datetime.now().strftime("%Y-%m-%d")
@@ -712,6 +734,7 @@ def home():
         balance=float(balance or 0),
         categories=categories,
         accounts=accounts,
+        months=months,
         today=today_str
     )
 
@@ -998,6 +1021,45 @@ def delete_all_transactions():
     conn.close()
 
     flash("All transactions have been deleted.", "warning")
+    return redirect(url_for("home"))
+
+
+# ============================================================
+# DELETE BY MONTH
+# ============================================================
+
+@app.route("/delete-month", methods=["POST"])
+@login_required
+def delete_month_transactions():
+    month = request.form.get("month", "").strip()
+    if not month or not re.match(r"^\d{4}-\d{2}$", month):
+        flash("Invalid month specified for deletion.", "danger")
+        return redirect(url_for("home"))
+
+    conn = get_db()
+    count = conn.execute("""
+        SELECT COUNT(*) FROM transactions
+        WHERE user_id = ? AND SUBSTR(date, 1, 7) = ?
+    """, (session["user_id"], month)).fetchone()[0]
+
+    if count == 0:
+        conn.close()
+        flash(f"No transactions found for {month}.", "info")
+        return redirect(url_for("home"))
+
+    conn.execute("""
+        DELETE FROM transactions
+        WHERE user_id = ? AND SUBSTR(date, 1, 7) = ?
+    """, (session["user_id"], month))
+    conn.commit()
+    conn.close()
+
+    try:
+        m_label = datetime.strptime(month, "%Y-%m").strftime("%B %Y")
+    except Exception:
+        m_label = month
+
+    flash(f"Deleted {count} transaction(s) for {m_label}. Previous and other months were preserved.", "warning")
     return redirect(url_for("home"))
 
 

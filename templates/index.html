@@ -131,6 +131,14 @@
                     {% endfor %}
                 </select>
 
+                <!-- Month Filter -->
+                <select id="monthFilter" class="filter-select" onchange="filterTransactions()">
+                    <option value="">All Months</option>
+                    {% for m in months %}
+                    <option value="{{ m.key }}">{{ m.label }} ({{ m.count }})</option>
+                    {% endfor %}
+                </select>
+
                 <!-- Sort Order -->
                 <select id="sortFilter" class="filter-select" onchange="sortTransactions()">
                     <option value="date-desc">Date (Newest First)</option>
@@ -157,12 +165,21 @@
                     <p>All recorded income, expenses, and investment entries</p>
                 </div>
                 {% if transactions %}
-                <form action="{{ url_for('delete_all_transactions') }}" method="POST" onsubmit="return confirm('⚠️ WARNING: Are you sure you want to delete ALL your transactions? This action cannot be undone.');">
-                    <button type="submit" class="btn btn-danger btn-sm">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                        Delete All
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <!-- DELETE BY MONTH BUTTON -->
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="openDeleteMonthModal()" style="color: var(--danger, #ef4444); border-color: rgba(239, 68, 68, 0.35); font-weight: 600;" title="Delete transactions for a specific month only">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                        Delete Month
                     </button>
-                </form>
+
+                    <!-- DELETE ALL BUTTON -->
+                    <form action="{{ url_for('delete_all_transactions') }}" method="POST" onsubmit="return confirm('⚠️ WARNING: Are you sure you want to delete ALL your transactions? This action cannot be undone.');" style="margin: 0;">
+                        <button type="submit" class="btn btn-danger btn-sm" title="Delete all transactions across all time">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            Delete All
+                        </button>
+                    </form>
+                </div>
                 {% endif %}
             </div>
 
@@ -405,6 +422,51 @@
         </div>
     </div>
 
+    <!-- ======================================================
+         DELETE BY MONTH MODAL
+    ====================================================== -->
+    <div id="deleteMonthModal" class="modal-overlay">
+        <div class="modal-card" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2>Delete by Month</h2>
+                <button class="modal-close-btn" onclick="closeModal('deleteMonthModal')">✕</button>
+            </div>
+
+            <form action="{{ url_for('delete_month_transactions') }}" method="POST" id="deleteMonthForm" onsubmit="return confirmDeleteMonth();">
+                <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 18px; line-height: 1.5;">
+                    Choose a specific month to delete. All other past and future months will remain untouched.
+                </p>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-weight: 600; display: block; margin-bottom: 6px;">Select Month</label>
+                    <select name="month" id="deleteMonthSelect" class="filter-select" style="width: 100%; height: 42px; font-size: 14px;" required onchange="updateDeleteMonthWarning()">
+                        {% if months %}
+                            {% for m in months %}
+                            <option value="{{ m.key }}" data-count="{{ m.count }}" data-label="{{ m.label }}">
+                                {{ m.label }} ({{ m.count }} transaction{% if m.count != 1 %}s{% endif %})
+                            </option>
+                            {% endfor %}
+                        {% else %}
+                            <option value="" disabled selected>No monthly transactions available</option>
+                        {% endif %}
+                    </select>
+                </div>
+
+                <div id="deleteMonthWarningBox" style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 12px 14px; margin-bottom: 22px; font-size: 13px; color: var(--danger, #ef4444); line-height: 1.4;">
+                    <div style="font-weight: 700; margin-bottom: 4px;">⚠️ Permanent Deletion:</div>
+                    <span id="deleteMonthWarningText">This will permanently delete transactions for the selected month.</span>
+                </div>
+
+                <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('deleteMonthModal')">Cancel</button>
+                    <button type="submit" class="btn btn-danger" id="deleteMonthSubmitBtn" {% if not months %}disabled{% endif %}>
+                        Delete Selected Month
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- DATALISTS FOR AUTOCOMPLETE -->
     <datalist id="categorySuggestions">
         <option value="Investment"></option>
@@ -520,6 +582,7 @@
             const query = (document.getElementById("searchInput").value || "").toLowerCase().trim();
             const typeVal = document.getElementById("typeFilter").value;
             const catVal = document.getElementById("categoryFilter").value;
+            const monthVal = (document.getElementById("monthFilter") ? document.getElementById("monthFilter").value : "");
 
             const allRows = getAllRows();
             let totalAmount = 0;
@@ -527,6 +590,7 @@
             visibleRows = allRows.filter(row => {
                 const type = row.dataset.type || "";
                 const cat = row.dataset.category || "";
+                const date = row.dataset.date || "";
                 const desc = (row.dataset.description || "").toLowerCase();
                 const place = (row.dataset.place || "").toLowerCase();
                 const acc = (row.dataset.account || "").toLowerCase();
@@ -544,8 +608,9 @@
 
                 const matchesType = !typeVal || type === typeVal;
                 const matchesCat = !catVal || cat === catVal;
+                const matchesMonth = !monthVal || date.startsWith(monthVal);
 
-                const isMatch = matchesQuery && matchesType && matchesCat;
+                const isMatch = matchesQuery && matchesType && matchesCat && matchesMonth;
                 if (isMatch) {
                     totalAmount += amount;
                 }
@@ -643,8 +708,52 @@
             document.getElementById("searchInput").value = "";
             document.getElementById("typeFilter").value = "";
             document.getElementById("categoryFilter").value = "";
+            if (document.getElementById("monthFilter")) {
+                document.getElementById("monthFilter").value = "";
+            }
             document.getElementById("sortFilter").value = "date-desc";
             sortTransactions();
+        }
+
+        function openDeleteMonthModal() {
+            const sel = document.getElementById("deleteMonthSelect");
+            if (sel && document.getElementById("monthFilter")) {
+                const currentMonthFilter = document.getElementById("monthFilter").value;
+                if (currentMonthFilter) {
+                    sel.value = currentMonthFilter;
+                }
+            }
+            openModal('deleteMonthModal');
+            updateDeleteMonthWarning();
+        }
+
+        function updateDeleteMonthWarning() {
+            const sel = document.getElementById('deleteMonthSelect');
+            if (!sel || !sel.value) return;
+            const opt = sel.options[sel.selectedIndex];
+            const label = opt.getAttribute('data-label') || sel.value;
+            const count = opt.getAttribute('data-count') || '0';
+            
+            const warnText = document.getElementById('deleteMonthWarningText');
+            if (warnText) {
+                warnText.innerHTML = `You are about to delete <strong>${count} transaction(s)</strong> from <strong>${label}</strong>. All previous and other months will remain untouched.`;
+            }
+            const btn = document.getElementById('deleteMonthSubmitBtn');
+            if (btn) {
+                btn.textContent = `Delete ${label}`;
+            }
+        }
+
+        function confirmDeleteMonth() {
+            const sel = document.getElementById('deleteMonthSelect');
+            if (!sel || !sel.value) {
+                alert("Please select a valid month to delete.");
+                return false;
+            }
+            const opt = sel.options[sel.selectedIndex];
+            const label = opt.getAttribute('data-label') || sel.value;
+            const count = opt.getAttribute('data-count') || '';
+            return confirm(`⚠️ Are you sure you want to permanently delete all ${count} transaction(s) for ${label}?\n\nThis cannot be undone. All other months will be preserved.`);
         }
 
         document.addEventListener("DOMContentLoaded", () => {
