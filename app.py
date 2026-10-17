@@ -199,7 +199,7 @@ def clean_amount(value):
         if value is None:
             return 0.0
         val_str = str(value).replace(",", "").replace("₹", "").replace("$", "").replace("€", "").replace("£", "").strip()
-        return round(float(val_str), 2)
+        return round(abs(float(val_str)), 2)
     except (ValueError, TypeError):
         return 0.0
 
@@ -216,9 +216,11 @@ def clean_num(val):
 
 def clean_type(value):
     val = str(value or "").strip().lower()
-    if val in ["income", "credit", "salary", "dividend", "interest"]:
+    if any(k in val for k in ["income", "credit", "salary", "dividend", "interest", "deposit", "received", "earning", "profit", "cashback"]):
         return "Income"
-    if val in ["investment", "investments", "sip", "mutual fund", "mutual funds", "stocks", "insurance", "bonds", "fd", "ppf"]:
+    if val == "cr" or val.startswith("cr ") or val.endswith(" cr"):
+        return "Income"
+    if any(k in val for k in ["invest", "sip", "mutual fund", "stock", "equity", "share", "insurance", "bond", "ppf", "nps", "fd", "fixed deposit"]):
         return "Investment"
     return "Expense"
 
@@ -233,10 +235,40 @@ def is_investment_category(category):
 
 
 def get_real_type(transaction_type, category):
+    t = clean_type(transaction_type)
+    if t == "Income":
+        return "Income"
     category_str = str(category or "").strip()
     if is_investment_category(category_str):
         return "Investment"
-    return clean_type(transaction_type)
+    return t
+
+
+def find_col_val(row, candidates):
+    if not row or not candidates:
+        return None
+    # 1. Exact match (case-insensitive, trimmed)
+    for cand in candidates:
+        cand_l = str(cand).strip().lower()
+        for k, v in row.items():
+            if k is not None and str(k).strip().lower() == cand_l:
+                if v is not None and str(v).strip() != "":
+                    return v
+    # 2. Starts with (e.g. "category (" starts with "category")
+    for cand in candidates:
+        cand_l = str(cand).strip().lower()
+        for k, v in row.items():
+            if k is not None and str(k).strip().lower().startswith(cand_l):
+                if v is not None and str(v).strip() != "":
+                    return v
+    # 3. Substring match (e.g. "type (expense or income)" contains "type")
+    for cand in candidates:
+        cand_l = str(cand).strip().lower()
+        for k, v in row.items():
+            if k is not None and cand_l in str(k).strip().lower():
+                if v is not None and str(v).strip() != "":
+                    return v
+    return None
 
 
 def normalize_date(value):
@@ -698,18 +730,36 @@ def home():
         ORDER BY account ASC
     """, (user_id,)).fetchall()]
 
+    # Auto-normalize any existing dates to YYYY-MM-DD for consistency
+    all_user_txs = conn.execute("SELECT id, date FROM transactions WHERE user_id = ? AND date IS NOT NULL", (user_id,)).fetchall()
+    needs_commit = False
+    for tx in all_user_txs:
+        raw_d = tx["date"]
+        norm_d = normalize_date(raw_d)
+        if norm_d != raw_d:
+            conn.execute("UPDATE transactions SET date = ? WHERE id = ?", (norm_d, tx["id"]))
+            needs_commit = True
+    if needs_commit:
+        conn.commit()
+
+    # Re-fetch transactions so home displays normalized dates
+    if needs_commit:
+        transactions = conn.execute("""
+            SELECT * FROM transactions
+            WHERE user_id = ?
+            ORDER BY date DESC, id DESC
+        """, (user_id,)).fetchall()
+
     # Available months for filtering & deletion
-    month_rows = conn.execute("""
-        SELECT SUBSTR(date, 1, 7) AS month_key, COUNT(*) AS tx_count
-        FROM transactions
-        WHERE user_id = ? AND date IS NOT NULL AND length(date) >= 7
-        GROUP BY SUBSTR(date, 1, 7)
-        ORDER BY month_key DESC
-    """, (user_id,)).fetchall()
+    month_counts = {}
+    for tx in transactions:
+        norm_d = normalize_date(tx["date"])
+        if len(norm_d) >= 7:
+            m_key = norm_d[:7]
+            month_counts[m_key] = month_counts.get(m_key, 0) + 1
 
     months = []
-    for r in month_rows:
-        m_key = r["month_key"]
+    for m_key in sorted(month_counts.keys(), reverse=True):
         try:
             m_label = datetime.strptime(m_key, "%Y-%m").strftime("%B %Y")
         except Exception:
@@ -717,7 +767,7 @@ def home():
         months.append({
             "key": m_key,
             "label": m_label,
-            "count": r["tx_count"]
+            "count": month_counts[m_key]
         })
 
     conn.close()
@@ -1032,32 +1082,63 @@ def delete_all_transactions():
 @login_required
 def delete_month_transactions():
     month = request.form.get("month", "").strip()
-    if not month or not re.match(r"^\d{4}-\d{2}$", month):
-        flash("Invalid month specified for deletion.", "danger")
+    if not month:
+        flash("Please select a valid month to delete.", "danger")
         return redirect(url_for("home"))
 
+    m_match = re.match(r"^(\d{4})[-/](\d{1,2})$", month)
+    if not m_match:
+        m_match_rev = re.match(r"^(\d{1,2})[-/](\d{4})$", month)
+        if m_match_rev:
+            mon = m_match_rev.group(1).zfill(2)
+            year = m_match_rev.group(2)
+        else:
+            flash("Invalid month specified for deletion.", "danger")
+            return redirect(url_for("home"))
+    else:
+        year = m_match.group(1)
+        mon = m_match.group(2).zfill(2)
+
+    norm_month = f"{year}-{mon}"
+    user_id = session["user_id"]
     conn = get_db()
-    count = conn.execute("""
-        SELECT COUNT(*) FROM transactions
-        WHERE user_id = ? AND SUBSTR(date, 1, 7) = ?
-    """, (session["user_id"], month)).fetchone()[0]
+
+    # Step 1: Normalize all existing dates for this user first
+    all_user_txs = conn.execute("SELECT id, date FROM transactions WHERE user_id = ? AND date IS NOT NULL", (user_id,)).fetchall()
+    for tx in all_user_txs:
+        norm_d = normalize_date(tx["date"])
+        if norm_d != tx["date"]:
+            conn.execute("UPDATE transactions SET date = ? WHERE id = ?", (norm_d, tx["id"]))
+    conn.commit()
+
+    patterns = [
+        f"{norm_month}%",
+        f"{year}/{mon}%",
+        f"%-{mon}-{year}%",
+        f"%/{mon}/{year}%",
+        f"%-{mon}-{year}",
+        f"%/{mon}/{year}"
+    ]
+
+    conditions = ["SUBSTR(date, 1, 7) = ?"] + ["date LIKE ?" for _ in patterns]
+    where_clause = f"user_id = ? AND ({' OR '.join(conditions)})"
+    params = [user_id, norm_month] + patterns
+
+    count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE {where_clause}", params).fetchone()[0]
 
     if count == 0:
         conn.close()
-        flash(f"No transactions found for {month}.", "info")
+        flash(f"No transactions found for {norm_month}.", "info")
         return redirect(url_for("home"))
 
-    conn.execute("""
-        DELETE FROM transactions
-        WHERE user_id = ? AND SUBSTR(date, 1, 7) = ?
-    """, (session["user_id"], month))
+    conn.execute(f"DELETE FROM transactions WHERE {where_clause}", params)
     conn.commit()
     conn.close()
 
     try:
-        m_label = datetime.strptime(month, "%Y-%m").strftime("%B %Y")
+        m_label = datetime.strptime(norm_month, "%Y-%m").strftime("%B %Y")
     except Exception:
-        m_label = month
+        m_label = norm_month
 
     flash(f"Deleted {count} transaction(s) for {m_label}. Previous and other months were preserved.", "warning")
     return redirect(url_for("home"))
@@ -1654,48 +1735,69 @@ def import_excel():
     imported_count = 0
 
     for row in rows:
-        date_raw = (
-            row.get("Tran Date") or row.get("Date") or row.get("Transaction Date")
-            or row.get("TRAN DATE") or row.get("date") or ""
-        )
+        date_raw = find_col_val(row, [
+            "date", "tran date", "transaction date", "txn date", "dt", "value date", "entry date"
+        ])
         if not date_raw:
             continue
 
         date_val = normalize_date(date_raw)
 
-        amount_raw = (
-            row.get("Amount") or row.get("AMOUNT") or row.get("amount")
-            or row.get("Debit") or row.get("Credit") or 0
-        )
+        amount_raw = find_col_val(row, [
+            "amt", "amount", "debit", "credit", "cost", "price", "val", "value", "spent", "dr", "cr"
+        ])
+        if amount_raw is None:
+            continue
+
         amount = clean_amount(amount_raw)
         if amount <= 0:
             continue
 
-        category = str(
-            row.get("Category") or row.get("CATEGORY") or row.get("category") or "Other"
-        ).strip() or "Other"
+        category_raw = find_col_val(row, [
+            "category", "cat", "particulars", "head", "item", "expense", "source", "purpose"
+        ])
+        category = str(category_raw).strip() if category_raw else "Other"
 
-        raw_type = (
-            row.get("Type") or row.get("TYPE") or row.get("type") or "Expense"
-        )
-        transaction_type = get_real_type(raw_type, category)
+        raw_type = find_col_val(row, [
+            "type", "txn type", "tran type", "mode", "flow", "cr/dr", "dr/cr", "transaction type", "expense/income", "income/expense"
+        ])
+        if raw_type:
+            transaction_type = get_real_type(raw_type, category)
+        else:
+            amt_str = str(amount_raw).strip()
+            if amt_str.startswith("-") or (clean_num(amount_raw) is not None and clean_num(amount_raw) < 0):
+                transaction_type = "Income"
+            elif any(k in category.lower() for k in ["income", "salary", "dividend", "interest", "cashback", "refund", "stipend"]):
+                transaction_type = "Income"
+            elif is_investment_category(category):
+                transaction_type = "Investment"
+            else:
+                transaction_type = "Expense"
 
-        subcategory = str(
-            row.get("Sub Category") or row.get("Subcategory") or row.get("SUB CATEGORY") or row.get("subcategory") or ""
-        ).strip()
+        subcategory_raw = find_col_val(row, [
+            "sub category", "subcategory", "sub-category", "subcat"
+        ])
+        subcategory = str(subcategory_raw).strip() if subcategory_raw else ""
 
-        desc_keys = [k for k in row.keys() if k.lower().startswith("description")]
-        description = ""
-        remarks_fallback = ""
-        if len(desc_keys) == 1:
-            description = str(row.get(desc_keys[0]) or "").strip()
-        elif len(desc_keys) >= 2:
-            description = str(row.get(desc_keys[0]) or "").strip()
-            remarks_fallback = str(row.get(desc_keys[1]) or "").strip()
+        desc_raw = find_col_val(row, [
+            "description", "narration", "desc", "details", "note"
+        ])
+        description = str(desc_raw).strip() if desc_raw else category
 
-        place = str(row.get("Place") or row.get("PLACE") or row.get("Location") or "").strip()
-        account = str(row.get("Account") or row.get("ACCOUNT") or row.get("Bank") or "").strip()
-        remarks = str(row.get("Remarks") or row.get("REMARKS") or row.get("Notes") or remarks_fallback or "").strip()
+        place_raw = find_col_val(row, [
+            "place", "location", "merchant", "store", "city", "vendor"
+        ])
+        place = str(place_raw).strip() if place_raw else ""
+
+        account_raw = find_col_val(row, [
+            "account", "bank", "payment mode", "wallet", "mode of payment"
+        ])
+        account = str(account_raw).strip() if account_raw else ""
+
+        remarks_raw = find_col_val(row, [
+            "remarks", "notes", "comment", "tag"
+        ])
+        remarks = str(remarks_raw).strip() if remarks_raw else ""
 
         if not subcategory and remarks:
             subcategory = remarks
