@@ -132,12 +132,18 @@
                 </select>
 
                 <!-- Month Filter -->
-                <select id="monthFilter" class="filter-select" onchange="filterTransactions()">
-                    <option value="">All Months</option>
-                    {% for m in months %}
-                    <option value="{{ m.key }}">{{ m.label }} ({{ m.count }})</option>
-                    {% endfor %}
-                </select>
+                <div style="display: inline-flex; align-items: center; gap: 6px;">
+                    <select id="monthFilter" class="filter-select" onchange="filterTransactions()">
+                        <option value="">All Months</option>
+                        {% for m in months %}
+                        <option value="{{ m.key }}">{{ m.label }} ({{ m.count }})</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" id="quickDeleteMonthBtn" class="btn btn-secondary btn-sm" onclick="openDeleteMonthModal()" style="display: none; color: var(--danger, #ef4444); border-color: rgba(239, 68, 68, 0.4); font-weight: 600; padding: 0 10px; height: 38px; align-items: center; gap: 4px;" title="Delete this selected month">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        Delete Month
+                    </button>
+                </div>
 
                 <!-- Sort Order -->
                 <select id="sortFilter" class="filter-select" onchange="sortTransactions()">
@@ -552,8 +558,14 @@
             document.getElementById("editModal").classList.add("open");
         }
 
+        function openModal(modalId) {
+            const el = document.getElementById(modalId);
+            if (el) el.classList.add("open");
+        }
+
         function closeModal(modalId) {
-            document.getElementById(modalId).classList.remove("open");
+            const el = document.getElementById(modalId);
+            if (el) el.classList.remove("open");
         }
 
         window.addEventListener("keydown", (e) => {
@@ -619,6 +631,11 @@
 
             document.getElementById("visibleCount").textContent = visibleRows.length;
             document.getElementById("filteredSum").textContent = "₹" + Math.round(totalAmount).toLocaleString("en-IN");
+
+            const quickBtn = document.getElementById("quickDeleteMonthBtn");
+            if (quickBtn) {
+                quickBtn.style.display = monthVal ? "inline-flex" : "none";
+            }
 
             currentPage = 1;
             renderPagination();
@@ -711,6 +728,8 @@
             if (document.getElementById("monthFilter")) {
                 document.getElementById("monthFilter").value = "";
             }
+            const quickBtn = document.getElementById("quickDeleteMonthBtn");
+            if (quickBtn) quickBtn.style.display = "none";
             document.getElementById("sortFilter").value = "date-desc";
             sortTransactions();
         }
@@ -731,6 +750,7 @@
             const sel = document.getElementById('deleteMonthSelect');
             if (!sel || !sel.value) return;
             const opt = sel.options[sel.selectedIndex];
+            if (!opt) return;
             const label = opt.getAttribute('data-label') || sel.value;
             const count = opt.getAttribute('data-count') || '0';
             
@@ -751,9 +771,9 @@
                 return false;
             }
             const opt = sel.options[sel.selectedIndex];
-            const label = opt.getAttribute('data-label') || sel.value;
-            const count = opt.getAttribute('data-count') || '';
-            return confirm(`⚠️ Are you sure you want to permanently delete all ${count} transaction(s) for ${label}?\n\nThis cannot be undone. All other months will be preserved.`);
+            const label = opt ? (opt.getAttribute('data-label') || sel.value) : sel.value;
+            const count = opt ? (opt.getAttribute('data-count') || '') : '';
+            return confirm(`Are you sure you want to permanently delete all ${count} transaction(s) for ${label}?\n\nThis cannot be undone. All other months will be preserved.`);
         }
 
         document.addEventListener("DOMContentLoaded", () => {
